@@ -1,0 +1,267 @@
+# Paired CAE <-> XiangShan-GEM5 (KMH-V3) difftest config — M5'
+# high-fidelity alignment gate (xs-1c-kmhv3).
+#
+# Round 48 (AC-K-5) lands this dedicated M5' config. It pairs
+# CAE's `cpu-model=ooo-kmhv3` + DecoupledBPU + TAGE-SC-L +
+# full-mshr memory model against XS-GEM5's `kmhv3.py` baseline
+# — fetchW=32 / decodeW=8 / renameW=8 / commitW=8 / ROB=352 /
+# LQ=72 / SQ=56 / numPhysIntRegs=224 / numPhysFloatRegs=256 /
+# SbufferEntries=16 — the exact parameter set the plan pins as
+# the M5' terminal-gate calibration target.
+#
+# Gate threshold (AC-K-5): max IPC error <= 10 %, geomean <= 5 %
+# vs kmhv3.py on the M5' KPI workload set = tier-1 U tier-2 with
+# frontend_sensitive in scope. Secondary metrics <= 10 % (15 %
+# for TLB-sensitive workloads per DEC-6).
+#
+# Calibration sweep results are recorded in
+# `docs/cae/m5-calibration-log.md`; round 48 lands only the
+# config + implementation surface (scheduler.c, violation.c,
+# concrete RAT/LSQ). The full sweep against a runnable XS-GEM5
+# binding depends on `t-spike-xsgem5` and is sequenced for
+# round 49+ once the binding is green.
+#
+# Dedicated-proof-config rule (round 44 Corollary L): one
+# benchmark per proof config. `alu` is the baseline anchor;
+# additional M5' KPI workloads get their own `xs-1c-kmhv3-
+# <bench>.yaml` if needed to keep suite aggregates cleanly
+# attributable.
+
+common:
+  contract:
+    schema_name: cae_gem5_difftest
+    schema_version: 1
+    config_name: xs-1c-kmhv3
+    timing_pair: [cae, xs-gem5]
+
+  benchmark:
+    name: alu
+    qemu_binary: benchmarks/build/alu.qemu.riscv
+    xs_raw_binary: benchmarks/build/alu.xs.bin
+    argv: []
+    iteration_count: 100000
+    measurement_window:
+      kind: ebreak_sentinel
+    num_threads: 1
+
+  cpu:
+    core_count: 1
+    clock_freq_hz: 2000000000
+    isa: rv64gc
+
+  memory:
+    dram_size: 268435456
+
+  reproducibility:
+    rng_seed: 1
+    cold_start: true
+
+  measurement:
+    sample_stats_at: ebreak
+    metrics:
+      - cycles
+      - insns
+      - ipc
+      - mispredict_rate
+      - l1d_mpki
+      - avg_load_latency
+    thresholds:
+      # AC-K-5 tightens AC-K-4's IPC threshold from 15 % to 10 %,
+      # secondary metrics to 10 % (15 % for TLB-sensitive per DEC-6).
+      ipc: 10.0
+      mispredict_rate: 10.0
+      l1d_mpki: 10.0
+      avg_load_latency: 15.0
+    noise_floor:
+      min_cycles: 100
+      min_insns: 100
+
+    # Round 53 AC-K-5: suite block belongs under
+    # `common.measurement.suite` per `_pairedyaml.py` +
+    # `run-xs-suite.sh` schema (same as xs-1c-functional.yaml /
+    # xs-1c-realspec.yaml). Round-48 through round-52 mistakenly
+    # placed this stanza at `common.suite` (two spaces
+    # shallower); the round-52 reviewer caught that
+    # `run-xs-suite.sh xs-1c-kmhv3 --benchmark alu` exited with
+    # "no gated benchmarks at tier 1" because the loader looks
+    # for benchmarks only under `measurement.suite`. Re-indent +
+    # move; no semantic change to the threshold / benchmark /
+    # metric lists.
+    suite:
+      # Single-benchmark dedicated proof config per Corollary L.
+      # Round 48 targets `alu` as the first baseline; wider
+      # tier-1 U tier-2 coverage lands in round 49+ as separate
+      # configs under this KMH-V3 umbrella. Schema matches the
+      # flat form used by xs-1c-realspec.yaml (benchmarks +
+      # metrics directly under `suite:`); run-xs-suite.sh reads
+      # `suite.benchmarks`, so nested `benchmark_selection` will
+      # NOT work (round-48-52 placed the list that way; round 53
+      # flattens it).
+      benchmarks:
+        - alu
+        # Representative Lower-Bound store-dense benchmark.
+        # Under the Round-8 plan-compliant ordering (tick in
+        # segment 3, commit-drain in segment 4), the fresh
+        # `mem-stream` telemetry shows the expected per-store
+        # residency pattern: each of ~32 k SDs is observed
+        # non-drainable at its alloc-charge tick
+        # (`head_non_drainable_events=32 001`) and drainable
+        # at the next charge's tick (`head_drainable_events=
+        # 32 000`), with `occupancy_max=1` and
+        # `inactive_max=1`. Under the Round-9 retune
+        # (`sqfull-commit-lag-threshold=2`) this pattern
+        # reaches the natural SQFull trigger — the alloc-
+        # charge tick sees `lag = store_sqn_next -
+        # sbuffer_commit_sqn = 2` on a non-drainable head.
+        - mem-stream
+        # Round 7 promoted `pointer-chase` from queued
+        # side-issue back into the suite as the only remaining
+        # in-plan representative Milestone-E candidate per the
+        # benchmark-selection rule ("Lower Bound 路径：从
+        # tests/cae-difftest/benchmarks/src/ 下现有的三个
+        # manifest benchmark 里挑至少一个 store-密集样例").
+        # Round 7 repairs the long-standing AC-K-2 functional
+        # failure (byte-diff at insn_index=321, field=flags:
+        # 192/258 SDs retired via TCG fast-path, bypassed
+        # cae_mem_access_notify, landed with mem_size=0 so
+        # the trace emitter did not set CAE_TRACE_FLAG_MEM_WRITE
+        # and diverged from NEMU) by deriving the three store
+        # fields from the insn encoding + live GPR state in
+        # target/riscv/cae/cae-riscv-trace-derive.c.
+        - pointer-chase
+      metrics:
+        - ipc
+        - mispredict_rate
+        - l1d_mpki
+        - avg_load_latency
+    suite_thresholds:
+      max_ipc_pct: 10.0
+      geomean_ipc_pct: 5.0
+      secondary_pct: 10.0
+      secondary_relax:
+        pointer-chase: 15.0
+        branchy: 15.0
+
+cae_only:
+  spec_stimulus_program: ""
+  cpu:
+    cpu_model: ooo-kmhv3
+    # Round 49 AC-K-5: CAE-side width + regfile knobs plumbed
+    # through _CAE_ACCEL_FIELD_MAP -> cae-accel class
+    # ooo-{rob,lq,sq,issue-width,commit-width,rename-width,
+    # num-phys-int-regs,num-phys-float-regs} -> forwarded onto
+    # the cae-cpu-ooo instance in init_machine. Values match
+    # kmhv3.py defaults.
+    #
+    # `rename_width` + `issue_width` + `issue_ports` are LIVE
+    # timing knobs on `cae_cpu_ooo_charge`:
+    #   cycles_per_retire = ceil(rename_width / issue_cap)
+    # where issue_cap = min(issue_width,
+    #                       sched_issue_ports[default=2, max=8]).
+    # At rename=8 / issue=8 / issue_ports=default(2), the
+    # scheduler-port cap clamps issue_cap to 2, so per-retire
+    # cycle charge is ceil(8/2) = 4. Setting issue_ports > 2
+    # via YAML allows difftest sweep of wider issue windows.
+    # `rename_width=0` is a full dispatch gate (no ROB / LSQ /
+    # RAT / sbuffer mutation on the stalled retire).
+    #
+    # `virtual_issue_window`: FU-agnostic batching (default 0 =
+    # disabled). Consecutive independent retires co-issue at zero
+    # additional cycle cost. Effective at any issue_cap.
+    #
+    # `dependent_load_stall_cycles`: pointer-chase serialization
+    # (default 0 = disabled). When current load's src depends on
+    # prior load's dst, add stall cycles.
+    rob_size: 352
+    lq_size: 72
+    sq_size: 56
+    issue_width: 8
+    commit_width: 8
+    rename_width: 8
+    num_phys_int_regs: 224
+    num_phys_float_regs: 256
+  bpred:
+    bpred_model: decoupled
+  memory:
+    memory_model: mshr
+    mshr:
+      mshr_size: 8
+      fill_queue_size: 8
+      writeback_queue_size: 8
+      # Round 50 AC-K-5: L1D bank-conflict knobs. kmhv3.py splits
+      # L1D into 8 banks; same-bank accesses in a single cycle
+      # incur a 2-cycle stall. Zero would leave the tracker
+      # disabled; non-zero enables the bank-conflict-events
+      # counter in cae-cache-mshr.
+      bank_count: 8
+      bank_conflict_stall_cycles: 2
+    # Round 50 AC-K-5: sbuffer evict-threshold watermark. 12 ~=
+    # 75 % of the kmhv3 sbuffer_entries=16 target. Zero would
+    # leave the evict tracker disabled; non-zero enables
+    # evict-threshold-events reporting in the cae-sbuffer child
+    # of cae-cpu-ooo.
+    sbuffer_evict_threshold: 12
+    l1i:
+      size_bytes: 32768
+      assoc: 8
+      line_size: 64
+      latency_hit_cycles: 4
+      latency_miss_cycles: 10
+
+xs_gem5_only:
+  runtime:
+    run_mode: raw_cpt
+    target_isa: RISCV
+    disable_difftest: true
+    raw_cpt: true
+    generic_rv_cpt: benchmarks/build/alu.xs.bin
+
+  cpu:
+    # kmhv3.py baseline widths + reg-file sizes.
+    cpu_type: DerivO3CPU
+    fetch_width: 32
+    decode_width: 8
+    rename_width: 8
+    commit_width: 8
+    issue_width: 8
+    rob_size: 352
+    lq_size: 72
+    sq_size: 56
+    num_phys_int_regs: 224
+    num_phys_float_regs: 256
+    sbuffer_entries: 16
+    bpred:
+      predictor: DecoupledBPU
+      tage_sc_l: true
+      ftq_size: 64
+      fsq_size: 64
+
+  memory:
+    mem_mode: timing
+    response_latency_ns: 1
+    dram_latency_ns: 50
+    l1i:
+      size: 32kB
+      assoc: 8
+      latency_hit_cycles: 4
+      latency_miss_cycles: 10
+    l1d:
+      size: 32kB
+      assoc: 8
+      latency_hit_cycles: 4
+      latency_miss_cycles: 10
+    l2:
+      size: 512kB
+      assoc: 8
+      latency_hit_cycles: 14
+    l3:
+      size: 4MB
+      assoc: 16
+      latency_hit_cycles: 40
+
+nemu_only:
+  runtime:
+    defconfig: riscv64-gem5-ref_defconfig
+    itrace_mode: trace
+    itrace_out: nemu-itrace.bin
+    build_dir: build/nemu-ref

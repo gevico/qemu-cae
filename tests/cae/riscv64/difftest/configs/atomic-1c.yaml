@@ -1,0 +1,56 @@
+# Paired CAE <-> gem5 difftest config: single-core AtomicCPU self-check.
+#
+# Used by the M1 CPI=1 gate. AtomicCPU is gem5's no-delay baseline
+# (~CPI=1 for most RISC-V insns) and CAE Phase-1 is a pure CPI=1 engine,
+# so the accuracy target is IPC delta <= 2 %.
+#
+# Switch `common.benchmark.name` to mem-stream or pointer-chase to
+# run the other microbenchmarks against the same config shape.
+
+common:
+  contract:
+    schema_name: cae_gem5_difftest
+    schema_version: 1
+    config_name: atomic-1c
+
+  benchmark:
+    name: alu                     # alu | mem-stream | pointer-chase
+    qemu_binary: benchmarks/build/alu.qemu.riscv
+    se_binary: benchmarks/build/alu.se.riscv
+    argv: []
+    iteration_count: 100000
+    measurement_window:
+      kind: ebreak_sentinel
+    num_threads: 1
+
+  cpu:
+    core_count: 1
+    clock_freq_hz: 1000000000
+    isa: rv64gc
+
+  memory:
+    dram_size: 268435456          # 256 MiB
+
+  reproducibility:
+    rng_seed: 1
+    cold_start: true
+
+  measurement:
+    sample_stats_at: ebreak
+    metrics:
+      - cycles
+      - insns
+      - ipc
+    thresholds:
+      ipc: 2.0                    # percent, relative error
+
+gem5_only:
+  runtime:
+    run_mode: se
+    target_isa: RISCV
+
+  cpu:
+    cpu_type: AtomicCPU
+
+  memory:
+    mem_mode: atomic

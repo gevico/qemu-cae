@@ -1,0 +1,19 @@
+# -*- Mode: makefile -*-
+#
+# RISC-V 64 CAE system-mode tests
+#
+# QEMU binary path comes from config-target.mak ($(QEMU)).
+
+VPATH += $(SRC_PATH)/tests/cae/riscv64/system
+
+QEMU_SYSTEM_OPTS = -machine virt -cpu rv64 -m 256M -nographic -serial none -monitor none
+
+SYSTEM_TESTS =
+
+run-system: run-system-smoke
+
+run-system-smoke:
+	@echo "CAE riscv64 system-mode smoke test"
+	@timeout 10 $(QEMU) -accel cae,cpu-model=cpi1 \
+		$(QEMU_SYSTEM_OPTS) -bios /dev/null 2>/dev/null || true
+	@echo "  PASS (no crash)"

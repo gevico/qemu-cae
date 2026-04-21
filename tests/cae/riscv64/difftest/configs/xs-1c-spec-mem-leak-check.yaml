@@ -1,0 +1,220 @@
+# Paired CAE <-> XiangShan-GEM5 (KMH-V3) difftest config — M4'
+# real-speculation negative-path gate (xs-1c-spec-mem-leak-check).
+#
+# Round 44 directive-step-7 proof surface. Clone of the
+# xs-1c-checkpoint-stress.yaml dedicated-proof template, but
+# targeting the `spec-mem-leak-check` benchmark with a WRITE-style
+# speculative stimulus.
+#
+# What this config proves:
+#
+#   spec-mem-leak-check.riscv initialises `spec_marker` to the
+#   sentinel 0xDEADBEEFCAFEBABE, runs a short workload loop,
+#   then WRITES the final `spec_marker` value to `spec_result`
+#   which NEMU's retired-instruction trace captures. Under DEC-4
+#   (current) mode the architectural path never writes zero to
+#   `spec_marker`, so `spec_result` ends as the sentinel.
+#
+#   This config fires exactly ONE speculative WRITE of 0 to
+#   `spec_marker` on every live spec window (engine drain). The
+#   stimulus targets `${sym:spec_marker}` — resolved by
+#   run-cae.py from the QEMU ELF symbol table at harness launch
+#   time so the linker layout never drifts from a hard-coded
+#   address. Correct sbuffer-squash behaviour (round 39 + round
+#   34/35 cache gates) keeps the speculative WRITE out of
+#   architectural state regardless of whether it was accepted
+#   into the sbuffer spec-slot (drained) or refused at stage
+#   time (rejected).
+#
+#   Round-40 accept/reject semantics (BitLesson Corollary I):
+#     * `drained` counts WRITEs that the sbuffer accepted as a
+#       speculative staging. Under live_restore these get
+#       sbuffer-rolled-back at mispredict; they never commit.
+#     * `rejected` counts WRITEs that the sbuffer refused at
+#       stage time (spec-slot full / cpu_model wrong-type
+#       / etc.). A reject is just a different early-exit path
+#       — also no architectural commit.
+#   Both counters are EXERCISE proofs — drained+rejected > 0
+#   means the `${sym:<name>}` resolver substituted a real
+#   address AND the engine fired the stimulus on live windows.
+#   The ratio depends on sbuffer-cap contention at runtime and
+#   is NOT by itself a proof signal.
+#
+#   The ARCHITECTURAL proof is the BYTE-IDENTICAL CAE/NEMU
+#   retired-insn trace produced by the binding chain
+#   (run-nemu-ref.sh + run-cae.py --trace-out + nemu-difftest.py
+#   --mode trace). The benchmark's final `sd spec_marker,
+#   spec_result` retires on both sides with identical bytes
+#   only if `spec_marker` still holds 0xDEADBEEFCAFEBABE. A
+#   hypothetical future squash bug that leaked the wrong-path
+#   WRITE of 0 into commit would surface as a trace byte-diff
+#   at that `sd` retire — not as an anomalous drained/rejected
+#   ratio.
+#
+# Placeholder resolution:
+#
+#   `cae_only.spec_stimulus_program` uses the Round 44
+#   ${sym:<name>} placeholder syntax. run-cae.py scans the
+#   string for ${sym:<name>} tokens, looks each <name> up in the
+#   resolved qemu_binary's ELF symbol table via objdump -t, and
+#   substitutes 0x%016x of the resolved address before
+#   forwarding via `qom-set /objects/cae-engine.spec-stimulus-
+#   program <resolved-string>`. Unknown symbols fail the run
+#   with a clear error.
+
+common:
+  contract:
+    schema_name: cae_gem5_difftest
+    schema_version: 1
+    config_name: xs-1c-spec-mem-leak-check
+    timing_pair: [cae, xs-gem5]
+
+  benchmark:
+    name: spec-mem-leak-check     # Directive step 7 proof.
+    qemu_binary: benchmarks/build/spec-mem-leak-check.qemu.riscv
+    xs_raw_binary: benchmarks/build/spec-mem-leak-check.xs.bin
+    argv: []
+    iteration_count: 100000
+    measurement_window:
+      kind: ebreak_sentinel
+    num_threads: 1
+
+  cpu:
+    core_count: 1
+    clock_freq_hz: 2000000000
+    isa: rv64gc
+
+  memory:
+    dram_size: 268435456
+
+  reproducibility:
+    rng_seed: 1
+    cold_start: true
+
+  measurement:
+    sample_stats_at: ebreak
+    metrics:
+      - cycles
+      - insns
+      - ipc
+      - mispredict_rate
+      - l1d_mpki
+      - avg_load_latency
+    thresholds:
+      ipc: 15.0
+      mispredict_rate: 20.0
+      l1d_mpki: 20.0
+      avg_load_latency: 20.0
+    noise_floor:
+      mispredict_rate: 0.001
+      avg_load_latency: 1.0
+      l1d_mpki: 0.01
+    suite:
+      # Dedicated negative-path proof config — one benchmark
+      # only, same rule as xs-1c-checkpoint-stress.yaml.
+      # Reason: `aggregate.total_spec_stimuli_rejected` in the
+      # run-cae.py JSON output must reflect this benchmark's
+      # rejected count exactly, so a future real-spec bug is
+      # caught without aggregation noise from other benchmarks.
+      benchmarks:
+        - spec-mem-leak-check
+      metrics:
+        - ipc
+        - mispredict_rate
+        - l1d_mpki
+        - avg_load_latency
+    suite_thresholds:
+      max_ipc_pct: 15.0
+      geomean_ipc_pct: 8.0
+      secondary_pct: 20.0
+      secondary_relax:
+        pointer-chase: 30.0
+        branchy: 25.0
+
+cae_only:
+  # Round 44 directive step 7: fire exactly one speculative
+  # WRITE of 0 to `spec_marker` on every live spec window. Under
+  # correct squash behaviour the WRITE never commits, so
+  # architectural spec_marker stays 0xDEADBEEFCAFEBABE and the
+  # benchmark's final WRITE to spec_result records the sentinel.
+  #
+  # `${sym:spec_marker}` is resolved by run-cae.py at harness
+  # launch time from the qemu_binary ELF's symbol table — the
+  # linker layout changes whenever spec-mem-leak-check.S is
+  # rebuilt, so hard-coding an address is fragile. The resolver
+  # fails fast if the symbol is missing.
+  spec_stimulus_program: "w:${sym:spec_marker}:8:0x0"
+  cpu:
+    cpu_model: ooo-kmhv3
+  bpred:
+    bpred_model: decoupled
+  memory:
+    memory_model: mshr
+    mshr:
+      mshr_size: 8
+      fill_queue_size: 8
+      writeback_queue_size: 8
+    l1i:
+      size_bytes: 32768
+      assoc: 8
+      line_size: 64
+      latency_hit_cycles: 4
+      latency_miss_cycles: 10
+
+xs_gem5_only:
+  runtime:
+    run_mode: raw_cpt
+    target_isa: RISCV
+    disable_difftest: true
+    raw_cpt: true
+    generic_rv_cpt: benchmarks/build/spec-mem-leak-check.xs.bin
+
+  cpu:
+    cpu_type: DerivO3CPU
+    fetch_width: 32
+    decode_width: 6
+    rename_width: 6
+    commit_width: 6
+    issue_width: 6
+    rob_size: 256
+    lq_size: 80
+    sq_size: 56
+    num_phys_int_regs: 224
+    num_phys_float_regs: 256
+    sbuffer_entries: 16
+    bpred:
+      predictor: DecoupledBPU
+      tage_sc_l: true
+      ftq_size: 64
+      fsq_size: 64
+
+  memory:
+    mem_mode: timing
+    response_latency_ns: 1
+    dram_latency_ns: 50
+    l1i:
+      size: 32kB
+      assoc: 8
+      latency_hit_cycles: 4
+      latency_miss_cycles: 10
+    l1d:
+      size: 32kB
+      assoc: 8
+      latency_hit_cycles: 4
+      latency_miss_cycles: 10
+    l2:
+      size: 512kB
+      assoc: 8
+      latency_hit_cycles: 14
+    l3:
+      size: 4MB
+      assoc: 16
+      latency_hit_cycles: 40
+
+nemu_only:
+  runtime:
+    defconfig: riscv64-gem5-ref_defconfig
+    itrace_mode: trace
+    itrace_out: nemu-itrace.bin
+    build_dir: build/nemu-ref
+    full_trace: false

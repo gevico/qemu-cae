@@ -1,0 +1,75 @@
+# Paired CAE <-> gem5 difftest config: single-core TimingSimpleCPU self-check.
+#
+# Used by the M1 memory-path gate. TimingSimpleCPU keeps the CPI=1 body
+# from AtomicCPU but charges real memory access latency via
+# SimpleMemory / Classic caches, so CAE Phase-1 (CPI=1, no memory model)
+# is expected to diverge on pointer-chase in particular. Threshold is
+# raised to <= 5 % to reflect that expected gap.
+
+common:
+  contract:
+    schema_name: cae_gem5_difftest
+    schema_version: 1
+    config_name: timing-1c
+
+  benchmark:
+    name: alu                     # alu | mem-stream | pointer-chase
+    qemu_binary: benchmarks/build/alu.qemu.riscv
+    se_binary: benchmarks/build/alu.se.riscv
+    argv: []
+    iteration_count: 100000
+    measurement_window:
+      kind: ebreak_sentinel
+    num_threads: 1
+
+  cpu:
+    core_count: 1
+    clock_freq_hz: 1000000000
+    isa: rv64gc
+
+  memory:
+    dram_size: 268435456
+
+  reproducibility:
+    rng_seed: 1
+    cold_start: true
+
+  measurement:
+    sample_stats_at: ebreak
+    metrics:
+      - cycles
+      - insns
+      - ipc
+    thresholds:
+      ipc: 5.0
+
+gem5_only:
+  runtime:
+    run_mode: se
+    target_isa: RISCV
+
+  cpu:
+    cpu_type: TimingSimpleCPU
+
+  memory:
+    mem_mode: timing
+    # SystemXBar fabric latency, ns; the gem5 launcher plumbs this
+    # into SystemXBar(frontend_latency / forward_latency /
+    # response_latency), mapping ns -> ticks at the configured clock.
+    response_latency_ns: 1
+    # SimpleMemory (DRAM) response latency, ns
+    dram_latency_ns: 50
+    # Simple L1I cache attached directly between the CPU icache_port
+    # and the SystemXBar.
+    l1i:
+      size: 32kB
+      assoc: 2
+      latency_hit_cycles: 1
+      latency_miss_cycles: 10
+    # Simple L1D cache attached directly between the CPU dcache_port
+    # and the SystemXBar.
+    l1d:
+      size: 32kB
+      assoc: 2
+      latency_hit_cycles: 1
+      latency_miss_cycles: 10

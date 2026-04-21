@@ -1,0 +1,3 @@
+config CAE
+    bool
+    select TCG

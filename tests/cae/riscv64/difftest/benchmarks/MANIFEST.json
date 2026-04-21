@@ -1,0 +1,415 @@
+{
+  "schema_version": 2,
+  "comment": [
+    "Per-benchmark build contract for the CAE difftest suite.",
+    "",
+    "Tier-1 (committed in-tree microbenchmarks): each benchmark produces",
+    "two ELF variants built from the same source:",
+    "  variants.qemu -> linked at 0x80000000 for qemu-system-riscv64 -bios,",
+    "                    exits via ebreak + wfi halt loop",
+    "  variants.se   -> linked at 0x00010000 for gem5 SE mode, exits via",
+    "                    ecall (syscall 93)",
+    "The Makefile passes -DGEM5_SE to select the SE exit path in bench.S.",
+    "run-gem5.py picks the 'se' variant; run-cae.py picks the 'qemu'",
+    "variant. sha256 is recorded per variant so drift in either build",
+    "is caught before simulation starts.",
+    "",
+    "Tier-2 (host-provided release-gate binaries): entries reference",
+    "binaries staged by the operator under $CAE_TIER2_BINARIES_DIR",
+    "(default ~/cae-ready-to-run/). tier2_binary_relpath is relative to",
+    "that directory; sha256 is pinned by the operator once staged. Until",
+    "staged, sha256='PENDING_OPERATOR_STAGING' and the entry is tagged",
+    "gated: false; run-xs-suite.sh --tier 2 is responsible for the final",
+    "sha256 check at suite run time and for failing closed when a tier-2",
+    "binary is missing (tier-1 runs remain unaffected).",
+    "",
+    "Per-benchmark metadata (every tier):",
+    "  tier                : 1 (committed) or 2 (host-provided)",
+    "  isa_subset          : rv64gc | rv64gcb | rv64gc_zifencei (etc.)",
+    "  uses                : list of [scalar|fp|amo|rvv]; workloads",
+    "                        touching RVV are carried here but tagged",
+    "                        gated: false until trace v2 lands (AC-K-1.1)",
+    "  frontend_sensitive  : true when the benchmark's IPC depends on the",
+    "                        frontend (BPred / I-cache) to a degree that",
+    "                        makes it ineligible for the M3' KPI gate and",
+    "                        eligible only at M4' (AC-K-3.3 / AC-K-4)",
+    "  reset_pc            : architectural reset / entry PC (CAE virt and",
+    "                        XS baremetal baselines both reset at",
+    "                        0x80000000); tier-2 entries declare this",
+    "                        explicitly because they bypass variants.",
+    "  gated               : whether the benchmark participates in",
+    "                        ci-gate.py / diff.py aggregation in the",
+    "                        current revision"
+  ],
+  "benchmarks": {
+    "alu": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": true,
+      "source": "src/alu.S",
+      "variants": {
+        "qemu": {
+          "binary": "alu.qemu.riscv",
+          "sha256": "9d42832d668b1cf7be5ad22b2cc4f2905252cda4b977fac39048e7ab72cdf1cd",
+          "sentinel_addr": "0x80000070"
+        },
+        "se": {
+          "binary": "alu.se.riscv",
+          "sha256": "c9cfed82206103edfe3c38817a3d1671bc12a6a4e8e82ad16d87b2230a43d60c",
+          "sentinel_addr": "0x00010070"
+        },
+        "xs": {
+          "binary": "alu.xs.bin",
+          "sha256": "5287380930c9ce857c35081a50c308ac3ce6fda5dfc153ac7fe8fb8326591640",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 100000,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 1000033,
+      "description": "Tight 10-insn ALU loop over 100 000 iterations; no memory accesses beyond the final sentinel write."
+    },
+    "mem-stream": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": true,
+      "source": "src/mem-stream.S",
+      "variants": {
+        "qemu": {
+          "binary": "mem-stream.qemu.riscv",
+          "sha256": "25426c0a3e9a68c496eb849aa2d52ef331453fc077af993d728d2af6a3fd9463",
+          "sentinel_addr": "0x80000080"
+        },
+        "se": {
+          "binary": "mem-stream.se.riscv",
+          "sha256": "e23022d88e6656c8161abc72e53142934ec1d8cbd021d467a1ea87bdab4270f9",
+          "sentinel_addr": "0x00010080"
+        },
+        "xs": {
+          "binary": "mem-stream.xs.bin",
+          "sha256": "f6249c0e3569fdc1ef33264c37906a2cf7f32ba954fb92c87dd17eb29ed6f8d9",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 1000,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 230024,
+      "description": "Unit-stride load/store stream over a 4 KiB buffer, 1000 outer iterations."
+    },
+    "pointer-chase": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": true,
+      "source": "src/pointer-chase.S",
+      "variants": {
+        "qemu": {
+          "binary": "pointer-chase.qemu.riscv",
+          "sha256": "741571fada9c53a2fe04d6dd051be9327505da447f2ab84978da6a648f566b6b",
+          "sentinel_addr": "0x80000080"
+        },
+        "se": {
+          "binary": "pointer-chase.se.riscv",
+          "sha256": "172172fa1dab03a4141702d0b2335de604c9eee37a2f24f7d32782d78382ce11",
+          "sentinel_addr": "0x00010080"
+        },
+        "xs": {
+          "binary": "pointer-chase.xs.bin",
+          "sha256": "793dd491527084846c00270fa1f0161e7cab90149d2ebbabab724a82a905043f",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 500,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 387809,
+      "description": "Linked-list chase over 256 nodes (64-byte stride), 500 outer iterations; every step is a dependent load."
+    },
+    "branchy": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": true,
+      "reset_pc": "0x80000000",
+      "gated": true,
+      "source": "src/branchy.S",
+      "variants": {
+        "qemu": {
+          "binary": "branchy.qemu.riscv",
+          "sha256": "ba4309cc7b033473f4192e3bfb15df8b5ef6cf5870a6963bb165d4197b8521d1",
+          "sentinel_addr": "0x80000080 "
+        },
+        "se": {
+          "binary": "branchy.se.riscv",
+          "sha256": "ff41a41b756f09d6c5bb5f0a9362806c0b4991923736e679fe7de803a906c433",
+          "sentinel_addr": "0x00010070"
+        },
+        "xs": {
+          "binary": "branchy.xs.bin",
+          "sha256": "feeb11c58887bb556eb2c9e6cd4da8ca0b06101dd0b356815d423e3f7ebd30a3",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 100000,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 1100000,
+      "description": "xorshift-driven unpredictable branches; ~50% taken rate with no learnable pattern. Marked frontend_sensitive=true: excluded from the M3' KPI aggregation per AC-K-3.3; becomes eligible at AC-K-4 once DecoupledBPU + I-cache land."
+    },
+    "matmul-small": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": true,
+      "source": "src/matmul-small.S",
+      "variants": {
+        "qemu": {
+          "binary": "matmul-small.qemu.riscv",
+          "sha256": "108f79e7b910d6a7528902384e58eb01e7a88f50160f076501ff5a61bed5dc50",
+          "sentinel_addr": "0x800003c0"
+        },
+        "se": {
+          "binary": "matmul-small.se.riscv",
+          "sha256": "4692fddafba2bc2643164e0b25766de92cb8d1c3f1acc5fa80a6a8a7117fbee3",
+          "sentinel_addr": "0x000103c0"
+        },
+        "xs": {
+          "binary": "matmul-small.xs.bin",
+          "sha256": "c3f8e36119e7186e6ccf1b0e1b8cf86c376a2c7486e8158fb93f319c0e389752",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 1024,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 3000000,
+      "description": "8x8 integer matrix multiply repeated 1024 times; mixed ALU + loads + stores + inner branches."
+    },
+    "coremark-1c": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": true,
+      "source": "src/coremark-1c.S",
+      "variants": {
+        "qemu": {
+          "binary": "coremark-1c.qemu.riscv",
+          "sha256": "19102804ff97ac05eb278877bee26c888ab3447082b4af2000cde0b2880ca0cb",
+          "sentinel_addr": "0x80000510"
+        },
+        "se": {
+          "binary": "coremark-1c.se.riscv",
+          "sha256": "9d15db57ccae33604ed10a7ccdd40e93c321eea882655836f150283667a10513",
+          "sentinel_addr": "0x00010510"
+        },
+        "xs": {
+          "binary": "coremark-1c.xs.bin",
+          "sha256": "2782de2b96b0d35de84929097fc8407033696fabb998e6373a96550a03473724",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 1,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 2000000,
+      "description": "Reduced coremark-style core loop: linked-list traversal + CRC-16 + state machine. No stdio; not the upstream CoreMark binary."
+    },
+    "spec-mem-leak-check": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": true,
+      "reset_pc": "0x80000000",
+      "gated": true,
+      "source": "src/spec-mem-leak-check.S",
+      "variants": {
+        "qemu": {
+          "binary": "spec-mem-leak-check.qemu.riscv",
+          "sha256": "df8db95e5770503121829b1a328f88510a45f38245a471503d5e7777abfb6e8e",
+          "sentinel_addr": "0x80000120"
+        },
+        "se": {
+          "binary": "spec-mem-leak-check.se.riscv",
+          "sha256": "8206081c09fa09f7c1b5584cfc6bd25b67c4f1f1ffe804103f57848e61ea8a13",
+          "sentinel_addr": "0x00010120"
+        },
+        "xs": {
+          "binary": "spec-mem-leak-check.xs.bin",
+          "sha256": "1d4093fec1d92f3d467e217e656ca890dd41ef8d0ab4e7d662c9021b560e8b9c",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 1024,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 19000,
+      "description": "M4' speculative-store-leak marker-address negative regression: initialises spec_marker to a sentinel, runs an unpredictable-branch commit-store stress loop over spec_buf, and gates an architecturally never-taken trap_arm that (only under wrong-path speculation) would clobber spec_marker. Final spec_result = spec_marker exposes any leak to the tier-1 byte-diff harness. The never-taken gate uses bltz on a masked PRNG bit (always non-negative) so the trap arm is unreachable on the correct path."
+    },
+    "checkpoint-stress": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": true,
+      "reset_pc": "0x80000000",
+      "gated": true,
+      "source": "src/checkpoint-stress.S",
+      "variants": {
+        "qemu": {
+          "binary": "checkpoint-stress.qemu.riscv",
+          "sha256": "d1e844b68bf55d90dcdf202fd733d5117fb77a3ab01565c8c5819f2d3eb79ede",
+          "sentinel_addr": "0x800000c0"
+        },
+        "se": {
+          "binary": "checkpoint-stress.se.riscv",
+          "sha256": "0e4e9143f60beb1b6e890c436d57ebddef69799220145359fe74b08dca8bcfc8",
+          "sentinel_addr": "0x000100c0"
+        },
+        "xs": {
+          "binary": "checkpoint-stress.xs.bin",
+          "sha256": "8917d717b8fc90a3e63fcbff3319143c71165b1b21b7806993722d86ccec7bef",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 25000,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 500000,
+      "description": "M4' checkpoint save/restore stress: 25 000 iterations \u00d7 4 independent PRNG-gated unpredictable branches + loop control, producing ~100 000 high-density mispredictable events. Under real-spec each mispredict drives one checkpoint save+restore; under DEC-4 functional-oracle the benchmark exits cleanly with architected state matching NEMU byte-for-byte. End-of-run stores taken_acc/nt_acc to ck_taken/ck_nt so the trace-diff consumer observes the architected per-retire state."
+    },
+    "xs-coremark": {
+      "tier": 2,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": false,
+      "tier2_binary_relpath": "ready-to-run/coremark-2-iteration.bin",
+      "sha256": "PENDING_OPERATOR_STAGING",
+      "argv": [],
+      "num_threads": 1,
+      "description": "Upstream XiangShan ready-to-run coremark (2 iterations). Operator stages the binary under $CAE_TIER2_BINARIES_DIR and replaces sha256 with the staged file's digest; run-xs-suite.sh --tier 2 then checks path + sha256 at run time. gated: false until the operator has staged and t-spike-boot has resolved the XS-GEM5 --raw-cpt boot contract."
+    },
+    "xs-dhrystone": {
+      "tier": 2,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": false,
+      "tier2_binary_relpath": "ready-to-run/dhrystone.bin",
+      "sha256": "PENDING_OPERATOR_STAGING",
+      "argv": [],
+      "num_threads": 1,
+      "description": "Upstream XiangShan ready-to-run dhrystone. Same staging contract as xs-coremark."
+    },
+    "xs-microbench": {
+      "tier": 2,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": false,
+      "tier2_binary_relpath": "ready-to-run/microbench.bin",
+      "sha256": "PENDING_OPERATOR_STAGING",
+      "argv": [],
+      "num_threads": 1,
+      "description": "Upstream XiangShan ready-to-run microbench aggregate. Specific sub-binary selection finalized after t-spike-xsgem5 confirms what --raw-cpt expects. Same staging contract as xs-coremark."
+    },
+    "coremark-full": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": true,
+      "reset_pc": "0x80000000",
+      "gated": false,
+      "source": "src/coremark/",
+      "variants": {
+        "qemu": {
+          "binary": "coremark-full.qemu.riscv",
+          "sha256": "c6e5dc460f83bdc75843fb174bf5847397e3f50eca4c8af79a545ca03ffc0772",
+          "sentinel_addr": "0x80002280"
+        },
+        "se": {
+          "binary": "coremark-full.se.riscv",
+          "sha256": "baee06a1927b84e50630809e89afe2034dca14d9167ebcb8dd247ecdfc3c627f",
+          "sentinel_addr": "0x00012280"
+        },
+        "xs": {
+          "binary": "coremark-full.xs.bin",
+          "sha256": "f23bca046114e7b8d13644587e6b243404fbcdf7df22525a083950bc7032c11a",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 1,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 500000,
+      "description": "Full EEMBC CoreMark (1 iteration, TOTAL_DATA_SIZE=50). Too heavy for one-insn-per-tb automated difftest; use for manual performance measurement. Apache-2.0 vendor sources."
+    }
+  }
+}

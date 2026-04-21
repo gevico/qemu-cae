@@ -28,6 +28,8 @@ bool riscv_cpu_tcg_compatible(RISCVCPU *cpu);
 
 extern const TCGCPUOps riscv_tcg_ops;
 
+void riscv_cpu_accel_instance_init(CPUState *cs);
+
 struct DisasContext;
 struct RISCVCPUConfig;
 typedef struct RISCVDecoder {

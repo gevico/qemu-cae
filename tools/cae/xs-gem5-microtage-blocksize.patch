@@ -1,0 +1,66 @@
+Replace MicroTAGE's shadowing `blockSize` Param with a plain
+class-level override.
+
+Background: in the pinned XS-GEM5 tree,
+`TimedBaseBTBPredictor.blockSize = Param.Unsigned(Parent.predictWidth, ...)`
+is the authoritative Param that the C++ ctor reads. Every
+subclass needs to either (a) rely on that proxy or (b) set a
+fixed default via a PLAIN class-level assignment (as BTBITTAGE,
+mbtb, and abtb already do). A `Param.Unsigned(32, ...)`
+redeclaration on the subclass creates a SEPARATE Python field
+instead of overriding the base Param's default, so C++ reads 0
+(shadow unset) and Python writes hit the shadow — the classic
+shadowed-descriptor bug.
+
+Two related failure modes are both covered by switching to the
+plain assignment form:
+
+  1. Pre-patch: `blockSize = Param.Unsigned(32, ...)` shadowed the
+     base Param, C++ saw 0, runtime panicked with
+     `MicroTAGE: branch exceeds block [0, 0) (blockSize=0)`.
+
+  2. Intermediate-patch (just removing the shadow): base Param's
+     `Parent.predictWidth` default resolved to 64 under the
+     `DecoupledBPUWithBTB` container, so `config.ini` reported
+     `[system.cpu.branchPred.microtage] blockSize=64`. kmhv3.py's
+     per-instance override `cpu.branchPred.microtage.blockSize =
+     32` didn't land either — still 64 in the dump. This is
+     because the base Param's lazy proxy wins over per-instance
+     writes that happen before finalization.
+
+Final fix: use the BTBITTAGE / mbtb pattern — `blockSize = 32`
+as a plain class attribute. That acts as a class-level default
+override for the inherited base Param without introducing a new
+Python field, so C++ reads 32 on every MicroTAGE instance and
+kmhv3.py's per-instance override is redundant but harmless.
+
+Verification gate (post-rebuild):
+`[system.cpu.branchPred.microtage]` section of
+`m5out/config.ini` must report `blockSize=32`. The
+`run-xs-gem5.py` config-ini guard enforces this fail-closed so
+a silent regression cannot slip through.
+
+The external checkout at `~/xiangshan-gem5` stays byte-identical
+per plan.md:217 read-only invariant; this patch applies post-
+rsync inside the staged build area only.
+
+--- a/src/cpu/pred/BranchPredictor.py
++++ b/src/cpu/pred/BranchPredictor.py
+@@ -1084,7 +1084,16 @@ class MicroTAGE(TimedBaseBTBPredictor):
+     tableSizes = VectorParam.Unsigned([512] * 4,"the TAGE T0~Tn length")
+     TTagBitSizes = VectorParam.Unsigned([16] * 4 ,"the T0~Tn entry's tag bit size")
+     TTagPcShifts = VectorParam.Unsigned([1] * 4 ,"when the T0~Tn entry's tag generating, PC right shift")
+-    blockSize = Param.Unsigned(32,"tage index function uses 32B aligned block address")
++    # blockSize must be a plain class-level override (not a Param
++    # redeclaration): Param.Unsigned(..) here would shadow the
++    # base-class `blockSize` Param that the C++ MicroTAGE(const
++    # Params&) ctor actually reads, and the inherited
++    # `Parent.predictWidth` default (=64 under DecoupledBPUWithBTB)
++    # silently overrides any per-instance assignment from
++    # kmhv3.py. Mirror BTBITTAGE's pattern (blockSize = 32) so
++    # the inherited base Param gets a fixed class-level default
++    # of 32, matching tage's 32-byte aligned block addressing.
++    blockSize = 32
+
+     histLengths = VectorParam.Unsigned([5,9,17,27] ,"the BTB TAGE T0~Tn history length")
+     maxHistLen = Param.Unsigned(970,"The length of history passed from DBP")

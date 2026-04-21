@@ -303,6 +303,10 @@ else
 endif
 accelerator_targets += { 'CONFIG_XEN': xen_targets }
 
+accelerator_targets += {
+  'CONFIG_CAE': ['riscv32-softmmu', 'riscv64-softmmu'],
+}
+
 if cpu == 'aarch64'
   accelerator_targets += {
     'CONFIG_HVF': ['aarch64-softmmu'],
@@ -933,6 +937,13 @@ if have_tcg
                         language: all_languages)
 
   accelerators += 'CONFIG_TCG'
+  if get_option('cae').allowed()
+    accelerators += 'CONFIG_CAE'
+  endif
+endif
+
+if 'CONFIG_CAE' not in accelerators and get_option('cae').enabled()
+  error('CAE requires TCG; enable TCG or drop -Dcae=enabled')
 endif
 
 if 'CONFIG_KVM' not in accelerators and get_option('kvm').enabled()
@@ -3879,6 +3890,7 @@ subdir('net')
 subdir('replay')
 subdir('stats')
 subdir('tcg')
+subdir('cae')
 subdir('fpu')
 subdir('plugins')
 subdir('ebpf')

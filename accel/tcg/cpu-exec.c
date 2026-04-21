@@ -18,6 +18,14 @@
  */
 
 #include "qemu/osdep.h"
+#include "cae/cae-mem-hook.h"
+#include "cae/checkpoint.h"
+#include "cae/cpu_ooo.h"
+#include "cae/engine.h"
+#include "cae/pipeline.h"
+#include "cae/uop.h"
+#include "accel/tcg/cpu-ldst-common.h"
+#include "accel/tcg/cpu-mmu-index.h"
 #include "qemu/qemu-print.h"
 #include "qapi/error.h"
 #include "qapi/type-helpers.h"
@@ -399,6 +407,168 @@ const void *HELPER(lookup_tb_ptr)(CPUArchState *env)
 
     if (qemu_loglevel_mask(CPU_LOG_TB_CPU | CPU_LOG_EXEC)) {
         log_cpu_exec(s.pc, cpu, tb);
+    }
+
+    /*
+     * This helper runs between two TBs that chain via goto_ptr: the
+     * previous TB has finished its body and the next TB is about to
+     * start. one_insn_per_tb sets CF_NO_GOTO_TB but leaves goto_ptr
+     * chaining enabled, so without charging here the post-TB charge in
+     * cpu_exec_loop would fire only when the chain eventually breaks —
+     * undercounting CAE cycles/insns whenever TCG reuses a cached TB
+     * chain (e.g. a tight loop body). Charge the completed TB and keep
+     * the started/charged counters balanced so the fault-compensation
+     * path in cae_cpu_exec still works.
+     *
+     * After charging, classify the about-to-run TB's first insn so its
+     * eventual charge (firing at the NEXT lookup_tb_ptr, or from the
+     * outer post-cpu_loop_exec_tb site) sees a current classification.
+     * The pre-run classification pattern gives cae_charge_executed_tb
+     * access to uop metadata that corresponds to the TB being charged.
+     *
+     * The insn fetch uses cpu_ld*_code which is safe in helper context:
+     * the TB covering this PC has already translated successfully, so
+     * the code page is present and a TLB fault here is not possible.
+     * We fetch 4 bytes unconditionally; the arch-neutral classifier
+     * inspects low bits to handle compressed (2-byte) encodings.
+     */
+    if (cae_allowed) {
+        CaeCpu *cae_cpu = cae_get_current_cpu();
+        /*
+         * Resolve the branch outcome of the TB that just retired
+         * before charging. active_uop carries its classification from
+         * the previous lookup_tb_ptr call (or is blank for the first
+         * TB of a cpu_exec slice). If the completed TB was a branch,
+         * compare the new target PC against the pre-classified
+         * instruction's fallthrough to derive taken/not-taken. The
+         * branch immediate's explicit target isn't needed here — for
+         * bpred evaluation, "actual_target = pc we landed on" and
+         * "actual_taken = landed != fallthrough" is the canonical
+         * resolve signal.
+         */
+        if (cae_cpu && cae_cpu->active_uop &&
+            cae_cpu->active_uop->is_branch &&
+            cae_cpu->active_uop->pc != 0) {
+            CaeUop *u = cae_cpu->active_uop;
+            /*
+             * Use the classifier-reported insn width when available,
+             * fall back to the low-bits trick (2 vs 4) only for the
+             * first TB of a cpu_exec slice whose active_uop never
+             * saw a classify pass. insn_bytes=0 means "never set";
+             * insn_bytes=2 or 4 comes from the classifier.
+             */
+            uint8_t bytes = u->insn_bytes;
+            if (bytes == 0) {
+                bytes = ((u->insn & 0x3) == 0x3) ? 4 : 2;
+            }
+            vaddr fallthrough = u->pc + bytes;
+            u->branch_taken = (s.pc != fallthrough);
+            u->branch_target = s.pc;
+        }
+
+        cae_charge_executed_tb();
+        cae_tbs_started++;
+        cae_tbs_charged++;
+
+        /*
+         * AC-K-10 first-PC observe point. `pc` here is the INCOMING
+         * TB's PC — the architectural PC that's about to retire
+         * next. Latching on this value lets first_pc capture the
+         * true benchmark-entry PC (0x80000000 for RV virt tier-1
+         * binaries) instead of the round-5 value of the
+         * second-retire PC (active_uop->pc lags one helper call).
+         * The engine-side helper guards on pc >= trace_start_pc,
+         * so the virt-machine bootrom retires at 0x1000 are
+         * skipped until the bootrom jumps into MBASE.
+         */
+        if (cae_cpu) {
+            cae_first_pc_observe(cae_cpu, s.pc);
+        }
+
+        if (cae_cpu && cae_cpu->active_uop &&
+            cae_uop_has_classifier()) {
+            CaeUop *uop = cae_cpu->active_uop;
+            MemOpIdx cae_oi = make_memop_idx(MO_LEUL,
+                                             cpu_mmu_index(cpu, true));
+            uint32_t raw = cpu_ldl_code_mmu(env, s.pc, cae_oi, 0);
+            uint8_t buf[4] = {
+                (uint8_t)(raw & 0xff),
+                (uint8_t)((raw >> 8) & 0xff),
+                (uint8_t)((raw >> 16) & 0xff),
+                (uint8_t)((raw >> 24) & 0xff),
+            };
+            uop->type = CAE_UOP_UNKNOWN;
+            uop->fu_type = CAE_FU_NONE;
+            uop->latency = 0;
+            uop->is_branch = false;
+            uop->branch_taken = false;
+            uop->branch_target = 0;
+            uop->pred_valid = false;
+            uop->pc = s.pc;
+            cae_uop_classify_bytes(uop, s.pc, buf, sizeof(buf));
+            /*
+             * Round 17 drift-recovery: fire the frontend-
+             * side bpred hook after classification so
+             * cae_bpred_predict() runs at TB ENTRY (before
+             * this TB executes) and update() still runs at
+             * RETIRE. This is the real decoupling Codex
+             * flagged as missing in rounds 15-16.
+             */
+            cae_engine_on_frontend_predict(cae_cpu->engine,
+                                           cae_cpu);
+            /*
+             * Round 31 live speculation save (t-tcg-spec-path).
+             * When the classified TB is a branch AND the
+             * frontend predicted AND there is no outstanding
+             * snapshot (the previous branch's resolve should
+             * have drained), take a checkpoint of the full
+             * CAE + RV architectural state. The snapshot is
+             * consumed at retire by cae_charge_executed_tb():
+             * on mispredict restore+squash+drop; on correct
+             * just drop. With no target emitter registered
+             * (unit tests, non-RV builds) cae_checkpoint_save
+             * returns NULL and spec_snap_valid stays false —
+             * the resolve block then short-circuits and
+             * behaviour falls back to the legacy penalty-only
+             * path.
+             *
+             * The squash boundary is the OoO cpu-model's
+             * store_sqn_next value BEFORE this TB runs;
+             * anything allocated by the predicted TB will have
+             * sqn >= that value and get squashed on a
+             * mispredict.
+             */
+            if (uop->is_branch && uop->pred_valid
+                && !cae_cpu->spec_snap_valid) {
+                cae_cpu->spec_snap = cae_checkpoint_save(cae_cpu);
+                if (cae_cpu->spec_snap) {
+                    cae_cpu->spec_snap_valid = true;
+                    cae_cpu->spec_squash_sqn =
+                        cae_cpu_ooo_current_store_sqn(
+                            cae_cpu->engine
+                                ? cae_cpu->engine->cpu_model
+                                : NULL);
+                    cae_cpu->spec_predicted.target_pc = uop->pred_target;
+                    cae_cpu->spec_predicted.taken = uop->pred_taken;
+                    cae_cpu->spec_predicted.target_known =
+                        uop->pred_target_known;
+                    /*
+                     * Round 38 directive step 1: drain any
+                     * queued live speculative-memory stimuli
+                     * now that the live window is open. No-op
+                     * when the queue is empty, which is the
+                     * normal steady-state — unit tests and the
+                     * (future, round 39/40) harness knob are
+                     * the only populators. The drain fires
+                     * each stimulus through cae_mem_access_notify
+                     * with req.speculative=true, which exercises
+                     * the round-34/35 cache gates on a real
+                     * engine-driven request.
+                     */
+                    cae_cpu_drain_spec_stimuli(cae_cpu);
+                }
+            }
+        }
     }
 
     return tb->tc.ptr;
@@ -996,7 +1166,75 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
                 tb_add_jump(last_tb, tb_exit, tb);
             }
 
+            if (cae_allowed) {
+                cae_tbs_started++;
+                CaeCpu *cae_cpu = cae_get_current_cpu();
+                if (cae_cpu) {
+                    cae_first_pc_observe(cae_cpu, s.pc);
+                }
+                if (cae_cpu && cae_cpu->active_uop &&
+                    cae_uop_has_classifier()) {
+                    CaeUop *uop = cae_cpu->active_uop;
+                    CPUArchState *env = cpu_env(cpu);
+                    MemOpIdx cae_oi2 = make_memop_idx(MO_LEUL,
+                                                      cpu_mmu_index(cpu, true));
+                    uint32_t raw = cpu_ldl_code_mmu(env, s.pc, cae_oi2, 0);
+                    uint8_t buf[4] = {
+                        (uint8_t)(raw & 0xff),
+                        (uint8_t)((raw >> 8) & 0xff),
+                        (uint8_t)((raw >> 16) & 0xff),
+                        (uint8_t)((raw >> 24) & 0xff),
+                    };
+                    cae_uop_classify_bytes(uop, s.pc, buf, sizeof(buf));
+                }
+            }
             cpu_loop_exec_tb(cpu, tb, s.pc, &last_tb, &tb_exit);
+
+            if (cae_allowed) {
+                /*
+                 * tb_exit > TB_EXIT_IDX1 means the TB never actually
+                 * executed — its prologue bailed via icount_decr
+                 * (e.g. the RR kick timer set cpu->exit_request
+                 * before the prologue finished). Charging here would
+                 * spuriously bump cycle_count / insn_count / bpred
+                 * stats for an instruction that did not retire, and
+                 * because the kick timer fires on QEMU_CLOCK_HOST
+                 * the spurious TB differs run-to-run. Unwind the
+                 * pre-increment of `cae_tbs_started` so the fault-
+                 * compensation in cae_cpu_exec does not mistake the
+                 * aborted TB for a missed synchronous-fault TB, then
+                 * skip the charge so serial determinism is not
+                 * broken by wall-clock preemption.
+                 */
+                if (tb_exit <= TB_EXIT_IDX1) {
+                    /*
+                     * Round 47 AC-K-2 byte-identity: the pre-TB
+                     * classify above (in the pre-cpu_loop_exec_tb
+                     * block) populates active_uop for the FIRST TB
+                     * of this outer iter. If the chain extended via
+                     * goto_ptr, HELPER(lookup_tb_ptr) reclassified
+                     * active_uop for each chained TB and emitted
+                     * the previous one at its pre-charge. By the
+                     * time we get here, active_uop carries the
+                     * LAST TB of the chain (the one that exited
+                     * via exit_tb) with correct pc + opcode +
+                     * rd_regs. Charge emits that TB.
+                     *
+                     * The round-6 pc stamp and the round-46 post-
+                     * TB classify that used to live here were both
+                     * keyed on the OUTER ITER's pc (= FIRST TB of
+                     * the chain) and therefore emitted the wrong
+                     * TB under goto_ptr chains — dropping every
+                     * taken backward branch from the binding
+                     * trace. Pre-TB classify replaces both.
+                     */
+                    cae_charge_executed_tb();
+                    cae_tbs_charged++;
+                } else {
+                    cae_tbs_started--;
+                }
+                cpu->exit_request = 1;
+            }
 
             /* Try to align the host and virtual clocks
                if the guest is in advance */

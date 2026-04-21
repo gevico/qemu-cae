@@ -1,0 +1,140 @@
+# Paired CAE <-> gem5 difftest config: single-core in-order pipeline.
+#
+# Pairs CAE's cpu-model=inorder-5stage (cae-cpu-inorder with per-uop
+# latency table) + bpred-model=2bit-local (cae-bpred-2bit-local with
+# BTB + RAS) + memory-model=l1-dram against gem5's MinorCPU, which is
+# the closest native in-order model in the pin-referenced gem5 tree.
+#
+# Gate threshold follows AC-4: max IPC error <= 10 % and (at the suite
+# level) geomean IPC error <= 5 % vs gem5 MinorCPU. Per-benchmark
+# thresholds stay at 10 % below; geomean is enforced by ci-gate.py
+# across the 6-benchmark set.
+
+common:
+  contract:
+    schema_name: cae_gem5_difftest
+    schema_version: 1
+    config_name: inorder-1c
+
+  benchmark:
+    name: alu                     # alu | mem-stream | pointer-chase |
+                                  # branchy | matmul-small | coremark-1c
+    qemu_binary: benchmarks/alu.qemu.riscv
+    se_binary: benchmarks/alu.se.riscv
+    argv: []
+    iteration_count: 100000
+    measurement_window:
+      kind: ebreak_sentinel
+    num_threads: 1
+
+  cpu:
+    core_count: 1
+    clock_freq_hz: 1000000000
+    isa: rv64gc
+
+  memory:
+    dram_size: 268435456
+
+  reproducibility:
+    rng_seed: 1
+    cold_start: true
+
+  measurement:
+    sample_stats_at: ebreak
+    metrics:
+      - cycles
+      - insns
+      - ipc
+      - mispredict_rate
+      - l1d_mpki
+      - avg_load_latency
+    thresholds:
+      # Per-metric relative-error thresholds (percent). Plan DEC-1
+      # sets secondary metrics to 10 % except for TLB-sensitive
+      # workloads, which are relaxed to 15 %. Per-benchmark
+      # relaxations are driven by AC4_SECONDARY_RELAX in ci-gate.py;
+      # the defaults here apply to every benchmark unless the
+      # config-equivalence path overrides per-benchmark.
+      ipc: 10.0
+      mispredict_rate: 10.0
+      l1d_mpki: 10.0
+      avg_load_latency: 10.0
+    # Per-metric noise floors: when both backends' absolute metric
+    # value falls below this threshold, the benchmark is marked
+    # "skip" rather than producing a meaningless rel-err. The
+    # suite gate excludes "skip" entries from its max / geomean
+    # aggregation. Units match the metric.
+    noise_floor:
+      mispredict_rate: 0.001         # 0.1 % — below this, signal is
+                                     # classifier noise, not branch
+                                     # behaviour.
+      avg_load_latency: 1.0          # 1 cycle average — below this,
+                                     # workload has effectively no
+                                     # data-memory behaviour to
+                                     # measure.
+      l1d_mpki: 0.01                 # 1 miss per 100k insns.
+
+cae_only:
+  cpu:
+    cpu_model: inorder-5stage
+    latency_mul: 3
+    latency_div: 20
+    latency_fpu: 4
+    # Pipeline-overlap credit: permille (0..1000) of each retirement's
+    # latency hidden by fetch/decode pipelining. 200 = 0.8 effective
+    # CPI on ALU-dense code, matching gem5 RiscvMinorCPU's numCycles
+    # / simInsts ratio of ~0.80 on alu.
+    overlap_permille: 200
+    # Extra cycles added to every LOAD / STORE / ATOMIC retire to
+    # model the pipeline bubble on a dependent load. Pointer-chase
+    # is dominated by dep-loads; gem5 MinorCPU holds the pipeline
+    # waiting for the value, which the scalar charge model can't
+    # capture without this term.
+    load_use_stall_cycles: 1
+  bpred:
+    bpred_model: 2bit-local
+    local_history_bits: 10
+    btb_entries: 64
+    btb_assoc: 2
+    ras_depth: 16
+    # gem5 RiscvMinorCPU's frontend-flush penalty lands around 5–10
+    # cycles depending on mispredict stage. Round-3 calibrates to 7
+    # as the best compromise across workload mixes: branchy
+    # (high-mispredict-density) settles near the 10 % gate, while
+    # matmul-small / coremark-1c (lower mispredict rates) don't get
+    # over-penalized.
+    mispredict_penalty_cycles: 7
+  memory:
+    memory_model: l1-dram
+    l1:
+      size_bytes: 32768
+      assoc: 2
+      line_size: 64
+      latency_hit_cycles: 1
+      latency_miss_cycles: 10
+    dram:
+      read_cycles: 50
+      write_cycles: 50
+
+gem5_only:
+  runtime:
+    mode: se
+    target_isa: RISCV
+
+  cpu:
+    cpu_type: MinorCPU
+
+  memory:
+    mem_mode: timing
+    response_latency_ns: 1
+    dram_latency_ns: 50
+    l1i:
+      size: 32kB
+      assoc: 2
+      latency_hit_cycles: 1
+      latency_miss_cycles: 10
+    l1d:
+      size: 32kB
+      assoc: 2
+      latency_hit_cycles: 1
+      latency_miss_cycles: 10

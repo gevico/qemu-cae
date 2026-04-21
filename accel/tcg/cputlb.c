@@ -42,6 +42,7 @@
 #include "qemu/atomic.h"
 #include "qemu/atomic128.h"
 #include "tb-internal.h"
+#include "cae/cae-mem-hook.h"
 #include "trace.h"
 #include "tb-hash.h"
 #include "tb-internal.h"
@@ -1005,6 +1006,29 @@ static inline void tlb_set_compare(CPUTLBEntryFull *full, CPUTLBEntry *ent,
         if (flags) {
             address |= TLB_FORCE_SLOW;
         }
+        /*
+         * Under -accel cae, force every memory access through the
+         * softmmu helper path (do_ld*_mmu / do_st*_mmu), where
+         * cae_mem_hook fires. The TCG-generated TLB fast-path would
+         * otherwise inline a direct RAM access on TLB hit and bypass
+         * the hook, leaving LOAD accesses invisible to CAE (only
+         * stores + TLB-miss loads reach the hook in softmmu mode).
+         * See BL-20260418-cae-load-hook-coverage.
+         *
+         * The gate is now per-mode (AC-K-13):
+         *   cpu-model=inorder-5stage  -> cae_tlb_force_slow_active=true
+         *                                preserves round-4 visibility
+         *                                (AC-K-8 non-regression);
+         *   cpu-model=ooo-kmhv3       -> cae_tlb_force_slow_active=false
+         *                                lets MSHR overlap become real
+         *                                (AC-K-3.2).
+         * The variable defaults to true in accel/cae/cae-all.c so the
+         * Phase-2 in-order track is bit-identical when this commit
+         * lands alone.
+         */
+        if (cae_allowed && cae_tlb_force_slow_active) {
+            address |= TLB_FORCE_SLOW;
+        }
     } else {
         address = -1;
         flags = 0;
@@ -1380,6 +1404,7 @@ static int probe_access_internal(CPUState *cpu, vaddr addr,
                 *pfull = NULL;
                 return TLB_INVALID_MASK;
             }
+            cae_tlb_miss_hook(cpu, addr);
 
             /* TLB resize via tlb_fill_align may have moved the entry.  */
             index = tlb_index(cpu, mmu_idx, addr);
@@ -1557,6 +1582,7 @@ tb_page_addr_t get_page_addr_code_hostp(CPUArchState *env, vaddr addr,
         return -1;
     }
 
+    cae_mem_hook(env_cpu(env), addr, 1, CAE_MEM_HOOK_FETCH, NULL);
     return qemu_ram_addr_from_host_nofail(p);
 }
 
@@ -1878,6 +1904,16 @@ static void *atomic_mmu_lookup(CPUState *cpu, vaddr addr, MemOpIdx oi,
     }
 
     hostaddr = (void *)((uintptr_t)addr + tlbe->addend);
+
+    /*
+     * CAE Phase-1 contract: atomics (LR/SC/AMO) are functionally
+     * correct but un-timed (plan: "AMO/LR/SC 功能正确但不计时"). Do
+     * not notify the memory backend here — a non-zero-latency
+     * CaeMemClass would otherwise charge every synchronization
+     * instruction as a normal read. Atomic timing is scheduled for
+     * a later milestone (AC-8/AC-6 gated benchmarks such as
+     * amo-contention.riscv).
+     */
 
     if (unlikely(tlb_addr & TLB_NOTDIRTY)) {
         notdirty_write(cpu, addr, size, full, retaddr);
@@ -2297,6 +2333,10 @@ static uint8_t do_ld1_mmu(CPUState *cpu, vaddr addr, MemOpIdx oi,
     crosspage = mmu_lookup(cpu, addr, oi, ra, access_type, &l);
     tcg_debug_assert(!crosspage);
 
+    /* Skip CAE hook for instruction fetch (translation-time, not execution) */
+    if (access_type != MMU_INST_FETCH) {
+        cae_mem_hook(cpu, addr, 1, CAE_MEM_HOOK_READ, NULL);
+    }
     return do_ld_1(cpu, &l.page[0], l.mmu_idx, access_type, ra);
 }
 
@@ -2311,9 +2351,17 @@ static uint16_t do_ld2_mmu(CPUState *cpu, vaddr addr, MemOpIdx oi,
     cpu_req_mo(cpu, TCG_MO_LD_LD | TCG_MO_ST_LD);
     crosspage = mmu_lookup(cpu, addr, oi, ra, access_type, &l);
     if (likely(!crosspage)) {
+        if (access_type != MMU_INST_FETCH) {
+            cae_mem_hook(cpu, addr, 2, CAE_MEM_HOOK_READ, NULL);
+        }
         return do_ld_2(cpu, &l.page[0], l.mmu_idx, access_type, l.memop, ra);
     }
 
+    /* Cross-page: two separate accesses, two hook notifications */
+    if (access_type != MMU_INST_FETCH) {
+        cae_mem_hook(cpu, l.page[0].addr, 1, CAE_MEM_HOOK_READ, NULL);
+        cae_mem_hook(cpu, l.page[1].addr, 1, CAE_MEM_HOOK_READ, NULL);
+    }
     a = do_ld_1(cpu, &l.page[0], l.mmu_idx, access_type, ra);
     b = do_ld_1(cpu, &l.page[1], l.mmu_idx, access_type, ra);
 
@@ -2335,9 +2383,18 @@ static uint32_t do_ld4_mmu(CPUState *cpu, vaddr addr, MemOpIdx oi,
     cpu_req_mo(cpu, TCG_MO_LD_LD | TCG_MO_ST_LD);
     crosspage = mmu_lookup(cpu, addr, oi, ra, access_type, &l);
     if (likely(!crosspage)) {
+        if (access_type != MMU_INST_FETCH) {
+            cae_mem_hook(cpu, addr, 4, CAE_MEM_HOOK_READ, NULL);
+        }
         return do_ld_4(cpu, &l.page[0], l.mmu_idx, access_type, l.memop, ra);
     }
 
+    if (access_type != MMU_INST_FETCH) {
+        cae_mem_hook(cpu, l.page[0].addr, l.page[0].size,
+                     CAE_MEM_HOOK_READ, NULL);
+        cae_mem_hook(cpu, l.page[1].addr, l.page[1].size,
+                     CAE_MEM_HOOK_READ, NULL);
+    }
     ret = do_ld_beN(cpu, &l.page[0], 0, l.mmu_idx, access_type, l.memop, ra);
     ret = do_ld_beN(cpu, &l.page[1], ret, l.mmu_idx, access_type, l.memop, ra);
     if ((l.memop & MO_BSWAP) == MO_LE) {
@@ -2356,9 +2413,18 @@ static uint64_t do_ld8_mmu(CPUState *cpu, vaddr addr, MemOpIdx oi,
     cpu_req_mo(cpu, TCG_MO_LD_LD | TCG_MO_ST_LD);
     crosspage = mmu_lookup(cpu, addr, oi, ra, access_type, &l);
     if (likely(!crosspage)) {
+        if (access_type != MMU_INST_FETCH) {
+            cae_mem_hook(cpu, addr, 8, CAE_MEM_HOOK_READ, NULL);
+        }
         return do_ld_8(cpu, &l.page[0], l.mmu_idx, access_type, l.memop, ra);
     }
 
+    if (access_type != MMU_INST_FETCH) {
+        cae_mem_hook(cpu, l.page[0].addr, l.page[0].size,
+                     CAE_MEM_HOOK_READ, NULL);
+        cae_mem_hook(cpu, l.page[1].addr, l.page[1].size,
+                     CAE_MEM_HOOK_READ, NULL);
+    }
     ret = do_ld_beN(cpu, &l.page[0], 0, l.mmu_idx, access_type, l.memop, ra);
     ret = do_ld_beN(cpu, &l.page[1], ret, l.mmu_idx, access_type, l.memop, ra);
     if ((l.memop & MO_BSWAP) == MO_LE) {
@@ -2379,6 +2445,7 @@ static Int128 do_ld16_mmu(CPUState *cpu, vaddr addr,
     cpu_req_mo(cpu, TCG_MO_LD_LD | TCG_MO_ST_LD);
     crosspage = mmu_lookup(cpu, addr, oi, ra, MMU_DATA_LOAD, &l);
     if (likely(!crosspage)) {
+        cae_mem_hook(cpu, addr, 16, CAE_MEM_HOOK_READ, NULL);
         if (unlikely(l.page[0].flags & TLB_MMIO)) {
             ret = do_ld16_mmio_beN(cpu, l.page[0].full, 0, addr, 16,
                                    l.mmu_idx, ra);
@@ -2395,6 +2462,10 @@ static Int128 do_ld16_mmu(CPUState *cpu, vaddr addr,
         return ret;
     }
 
+    cae_mem_hook(cpu, l.page[0].addr, l.page[0].size,
+                 CAE_MEM_HOOK_READ, NULL);
+    cae_mem_hook(cpu, l.page[1].addr, l.page[1].size,
+                 CAE_MEM_HOOK_READ, NULL);
     first = l.page[0].size;
     if (first == 8) {
         MemOp mop8 = (l.memop & ~MO_SIZE) | MO_64;
@@ -2698,6 +2769,7 @@ static void do_st1_mmu(CPUState *cpu, vaddr addr, uint8_t val,
     crosspage = mmu_lookup(cpu, addr, oi, ra, MMU_DATA_STORE, &l);
     tcg_debug_assert(!crosspage);
 
+    cae_mem_hook(cpu, addr, 1, CAE_MEM_HOOK_WRITE, &val);
     do_st_1(cpu, &l.page[0], val, l.mmu_idx, ra);
 }
 
@@ -2711,10 +2783,13 @@ static void do_st2_mmu(CPUState *cpu, vaddr addr, uint16_t val,
     cpu_req_mo(cpu, TCG_MO_LD_ST | TCG_MO_ST_ST);
     crosspage = mmu_lookup(cpu, addr, oi, ra, MMU_DATA_STORE, &l);
     if (likely(!crosspage)) {
+        cae_mem_hook(cpu, addr, 2, CAE_MEM_HOOK_WRITE, &val);
         do_st_2(cpu, &l.page[0], val, l.mmu_idx, l.memop, ra);
         return;
     }
 
+    cae_mem_hook(cpu, l.page[0].addr, 1, CAE_MEM_HOOK_WRITE, NULL);
+    cae_mem_hook(cpu, l.page[1].addr, 1, CAE_MEM_HOOK_WRITE, NULL);
     if ((l.memop & MO_BSWAP) == MO_LE) {
         a = val, b = val >> 8;
     } else {
@@ -2733,10 +2808,15 @@ static void do_st4_mmu(CPUState *cpu, vaddr addr, uint32_t val,
     cpu_req_mo(cpu, TCG_MO_LD_ST | TCG_MO_ST_ST);
     crosspage = mmu_lookup(cpu, addr, oi, ra, MMU_DATA_STORE, &l);
     if (likely(!crosspage)) {
+        cae_mem_hook(cpu, addr, 4, CAE_MEM_HOOK_WRITE, &val);
         do_st_4(cpu, &l.page[0], val, l.mmu_idx, l.memop, ra);
         return;
     }
 
+    cae_mem_hook(cpu, l.page[0].addr, l.page[0].size,
+                 CAE_MEM_HOOK_WRITE, NULL);
+    cae_mem_hook(cpu, l.page[1].addr, l.page[1].size,
+                 CAE_MEM_HOOK_WRITE, NULL);
     /* Swap to little endian for simplicity, then store by bytes. */
     if ((l.memop & MO_BSWAP) != MO_LE) {
         val = bswap32(val);
@@ -2754,10 +2834,15 @@ static void do_st8_mmu(CPUState *cpu, vaddr addr, uint64_t val,
     cpu_req_mo(cpu, TCG_MO_LD_ST | TCG_MO_ST_ST);
     crosspage = mmu_lookup(cpu, addr, oi, ra, MMU_DATA_STORE, &l);
     if (likely(!crosspage)) {
+        cae_mem_hook(cpu, addr, 8, CAE_MEM_HOOK_WRITE, &val);
         do_st_8(cpu, &l.page[0], val, l.mmu_idx, l.memop, ra);
         return;
     }
 
+    cae_mem_hook(cpu, l.page[0].addr, l.page[0].size,
+                 CAE_MEM_HOOK_WRITE, NULL);
+    cae_mem_hook(cpu, l.page[1].addr, l.page[1].size,
+                 CAE_MEM_HOOK_WRITE, NULL);
     /* Swap to little endian for simplicity, then store by bytes. */
     if ((l.memop & MO_BSWAP) != MO_LE) {
         val = bswap64(val);
@@ -2777,6 +2862,7 @@ static void do_st16_mmu(CPUState *cpu, vaddr addr, Int128 val,
     cpu_req_mo(cpu, TCG_MO_LD_ST | TCG_MO_ST_ST);
     crosspage = mmu_lookup(cpu, addr, oi, ra, MMU_DATA_STORE, &l);
     if (likely(!crosspage)) {
+        cae_mem_hook(cpu, addr, 16, CAE_MEM_HOOK_WRITE, NULL);
         if (unlikely(l.page[0].flags & TLB_MMIO)) {
             if ((l.memop & MO_BSWAP) != MO_LE) {
                 val = bswap128(val);
@@ -2794,6 +2880,10 @@ static void do_st16_mmu(CPUState *cpu, vaddr addr, Int128 val,
         return;
     }
 
+    cae_mem_hook(cpu, l.page[0].addr, l.page[0].size,
+                 CAE_MEM_HOOK_WRITE, NULL);
+    cae_mem_hook(cpu, l.page[1].addr, l.page[1].size,
+                 CAE_MEM_HOOK_WRITE, NULL);
     first = l.page[0].size;
     if (first == 8) {
         MemOp mop8 = (l.memop & ~(MO_SIZE | MO_BSWAP)) | MO_64;

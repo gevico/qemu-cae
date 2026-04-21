@@ -1,0 +1,36 @@
+# -*- Mode: makefile -*-
+#
+# RISC-V 64 CAE difftest targets
+#
+# Runs paired CAE vs gem5 comparisons. All paths derived from
+# SRC_PATH and BUILD_DIR (set by config-host.mak / config-target.mak).
+
+DIFFTEST_SRC = $(SRC_PATH)/tests/cae/riscv64/difftest
+DIFFTEST_SCRIPTS = $(DIFFTEST_SRC)/scripts
+DIFFTEST_BENCH_SRC = $(DIFFTEST_SRC)/benchmarks/src
+DIFFTEST_BENCH_BUILD = $(BUILD_DIR)/tests/cae/difftest/benchmarks
+DIFFTEST_REPORT_DIR = $(BUILD_DIR)/tests/cae/difftest/reports
+
+DIFFTEST_CONFIGS_INORDER = inorder-1c
+
+.PHONY: build-difftest run-difftest run-difftest-single clean-difftest
+
+DIFFTEST_CC ?= $(CC)
+
+build-difftest:
+	@if command -v $(DIFFTEST_CC) >/dev/null 2>&1; then \
+		$(MAKE) -C $(DIFFTEST_BENCH_SRC) \
+			CAE_BUILD_DIR=$(BUILD_DIR) \
+			CROSS_COMPILE=$(DIFFTEST_CC:gcc=); \
+	else \
+		echo "SKIP: cross-compiler $(DIFFTEST_CC) not found"; \
+	fi
+
+run-difftest: build-difftest
+	CAE_BUILD_DIR=$(BUILD_DIR) bash $(DIFFTEST_SCRIPTS)/run-suite.sh $(DIFFTEST_CONFIGS_INORDER)
+
+run-difftest-single: build-difftest
+	CAE_BUILD_DIR=$(BUILD_DIR) bash $(DIFFTEST_SCRIPTS)/run-all.sh $(CONFIG) $(BENCH)
+
+clean-difftest:
+	rm -rf $(DIFFTEST_BENCH_BUILD) $(DIFFTEST_REPORT_DIR)

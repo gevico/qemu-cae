@@ -266,7 +266,6 @@ static vaddr riscv_pointer_wrap(CPUState *cs, int mmu_idx,
 const TCGCPUOps riscv_tcg_ops = {
     .mttcg_supported = true,
     .guest_default_memory_order = 0,
-
     .initialize = riscv_translate_init,
     .translate_code = riscv_translate_code,
     .get_tb_cpu_state = riscv_get_tb_cpu_state,
@@ -1670,7 +1669,11 @@ static bool riscv_cpu_has_max_extensions(Object *cpu_obj)
     return object_dynamic_cast(cpu_obj, TYPE_RISCV_CPU_MAX) != NULL;
 }
 
-static void riscv_tcg_cpu_instance_init(CPUState *cs)
+/*
+ * Initialize extension tracking tables and user properties.
+ * Shared between TCG and CAE accelerator CPU init paths.
+ */
+void riscv_cpu_accel_instance_init(CPUState *cs)
 {
     RISCVCPU *cpu = RISCV_CPU(cs);
     Object *obj = OBJECT(cpu);
@@ -1693,10 +1696,26 @@ static void riscv_tcg_cpu_instance_init(CPUState *cs)
     }
 }
 
+static void riscv_tcg_cpu_instance_init(CPUState *cs)
+{
+    riscv_cpu_accel_instance_init(cs);
+}
+
+static void riscv_tcg_cpu_init_ops(AccelCPUClass *accel_cpu, CPUClass *cc)
+{
+    cc->tcg_ops = &riscv_tcg_ops;
+}
+
+static void riscv_tcg_cpu_class_init(CPUClass *cc)
+{
+    cc->init_accel_cpu = riscv_tcg_cpu_init_ops;
+}
+
 static void riscv_tcg_cpu_accel_class_init(ObjectClass *oc, const void *data)
 {
     AccelCPUClass *acc = ACCEL_CPU_CLASS(oc);
 
+    acc->cpu_class_init = riscv_tcg_cpu_class_init;
     acc->cpu_instance_init = riscv_tcg_cpu_instance_init;
     acc->cpu_target_realize = riscv_tcg_cpu_realize;
 }

@@ -1,0 +1,6 @@
+# Difftest pipeline build artifacts — generated locally, never committed.
+benchmarks/build/
+benchmarks/build-*/
+reports/
+*.pyc
+__pycache__/

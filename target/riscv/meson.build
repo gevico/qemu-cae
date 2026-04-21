@@ -45,6 +45,7 @@ riscv_system_ss.add(files(
 ))
 
 subdir('tcg')
+subdir('cae')
 subdir('kvm')
 
 target_arch += {'riscv': riscv_ss}

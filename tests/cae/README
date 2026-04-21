@@ -1,0 +1,70 @@
+CAE Test Framework
+==================
+
+This directory contains the CAE (Cycle Approximate Engine) test suite,
+organized by architecture following the same structure as tests/tcg/.
+
+Directory Structure
+-------------------
+
+    tests/cae/
+    ├── Makefile.target              Main orchestrator
+    ├── README                       This file
+    ├── multiarch/                   Architecture-agnostic tests
+    │   ├── system/                  Shared system-mode tests
+    │   └── difftest/                Shared difftest utilities
+    └── riscv64/                     RISC-V 64-bit tests
+        ├── Makefile.target          User-mode tests
+        ├── Makefile.softmmu-target  System-mode tests
+        ├── Makefile.difftest-target Difftest targets (CAE vs gem5)
+        ├── system/                  System test sources and scripts
+        └── difftest/                Difftest infrastructure
+            ├── benchmarks/          Tier-1 microbenchmarks + MANIFEST
+            ├── configs/             Paired YAML configurations
+            ├── scripts/             Python/Bash drivers
+            └── reports/             Output artifacts (git-ignored)
+
+Test Modes
+----------
+
+Each architecture directory can provide three Makefiles:
+
+  Makefile.target
+    User-mode tests. Run under qemu-<arch> (linux-user) with CAE
+    instrumentation hooks. Tests instruction classification and basic
+    UOP metadata without a full machine model.
+
+  Makefile.softmmu-target
+    System-mode tests. Run under qemu-system-<arch> -accel cae. Tests
+    the full CAE timing path including one-insn-per-tb charging, branch
+    prediction, cache modeling, and event queue mechanics.
+
+  Makefile.difftest-target
+    Difftest mode (specialization of system-mode). Runs paired
+    comparisons between CAE and a reference simulator (gem5 for
+    in-order, XiangShan GEM5 for OoO) using identical configurations
+    (paired YAML). Reports IPC, cycle count, misprediction rate, and
+    other metrics. Used for accuracy calibration.
+
+Quick Start
+-----------
+
+    # Build and run in-order difftest suite (RISC-V 64)
+    make -C tests/cae/riscv64 -f ../Makefile.target build-difftest
+    make -C tests/cae/riscv64 -f ../Makefile.target run-difftest
+
+    # Run a single benchmark
+    make -C tests/cae/riscv64 -f ../Makefile.target \
+        run-difftest-single CONFIG=inorder-1c BENCH=alu
+
+    # Unit tests (via meson, arch-independent)
+    meson test -C build-cae qemu:test-cae --print-errorlogs
+
+Adding a New Architecture
+-------------------------
+
+1. Create tests/cae/<arch>/
+2. Add Makefile.target for user-mode tests
+3. Add Makefile.softmmu-target for system-mode tests
+4. Optionally add Makefile.difftest-target with reference sim configs
+5. Add benchmark sources under <arch>/difftest/benchmarks/src/

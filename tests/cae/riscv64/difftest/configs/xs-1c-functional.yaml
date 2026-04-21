@@ -1,0 +1,199 @@
+# Paired CAE <-> XiangShan-GEM5 (KMH-V3) difftest config — M3' OoO
+# functional-oracle gate.
+#
+# Pairs CAE's cpu-model=ooo-kmhv3 (TYPE_CAE_CPU_OOO implementing
+# TYPE_CAE_CPU_MODEL; landing in a later round) against XiangShan
+# GEM5's kmhv3.py baseline on ~/xiangshan-gem5 pin e584f268a6. NEMU
+# (~/NEMU pin d0736eef66608ffbfd789cc26ef8e4de31639ee8) supplies a
+# functional difftest reference: retired-instruction trace byte-diff
+# on tier-1 workloads, periodic architectural-state checkpoint diff
+# on tier-2.
+#
+# Gate threshold follows AC-K-3: max IPC error <= 30 % and (at the
+# suite level) geomean IPC error <= 15 % vs XS-GEM5 KMH-V3 on the
+# M3' KPI workload set = tier-1 U tier-2 minus `frontend_sensitive:
+# true` benchmarks. `branchy` joins the gate aggregation at AC-K-4
+# once DecoupledBPU + I-cache land.
+#
+# `config-equivalence.py` validates every xs_gem5_only / nemu_only
+# leaf against the consumed-field tables. The timing_pair contract
+# tells diff.py which two JSON reports to compare.
+
+common:
+  contract:
+    schema_name: cae_gem5_difftest
+    schema_version: 1
+    config_name: xs-1c-functional
+    timing_pair: [cae, xs-gem5]
+
+  benchmark:
+    name: alu                     # alu | mem-stream | pointer-chase |
+                                  # matmul-small | coremark-1c
+                                  # (branchy excluded from M3' KPI per
+                                  # AC-K-3.3)
+    qemu_binary: benchmarks/build/alu.qemu.riscv
+    xs_raw_binary: benchmarks/build/alu.xs.bin
+    argv: []
+    iteration_count: 100000
+    measurement_window:
+      kind: ebreak_sentinel
+    num_threads: 1
+
+  cpu:
+    core_count: 1
+    clock_freq_hz: 2000000000
+    isa: rv64gc
+
+  memory:
+    dram_size: 268435456
+
+  reproducibility:
+    rng_seed: 1
+    cold_start: true
+
+  measurement:
+    sample_stats_at: ebreak
+    metrics:
+      - cycles
+      - insns
+      - ipc
+      - mispredict_rate
+      - l1d_mpki
+      - avg_load_latency
+    thresholds:
+      # Per-metric relative-error thresholds (percent). AC-K-3 allows
+      # 30 % on IPC and secondary metrics for the M3' intermediate
+      # gate; AC-K-4 tightens to 15 %; AC-K-5 to 10 %. Per-benchmark
+      # relaxation is expressed in suite_thresholds.secondary_relax.
+      ipc: 30.0
+      mispredict_rate: 30.0
+      l1d_mpki: 30.0
+      avg_load_latency: 30.0
+    noise_floor:
+      # Inherited from the in-order track. KMH-V3 IPC is ~2x MinorCPU
+      # so the absolute magnitudes rise accordingly; keeping the
+      # floor the same leaves the skip semantic conservative (still
+      # fires when both sides are at per-metric noise), not laxer.
+      mispredict_rate: 0.001
+      avg_load_latency: 1.0
+      l1d_mpki: 0.01
+    suite:
+      # AC-K-3 KPI set: tier-1 U tier-2 minus `frontend_sensitive:
+      # true`. branchy is excluded per AC-K-3.3 (joins at AC-K-4).
+      # Tier-2 entries stay listed so the suite driver resolves them
+      # once an operator stages the host-provided binaries; any
+      # entry tagged `gated: false` is skipped by run-xs-suite.sh.
+      benchmarks:
+        - alu
+        - mem-stream
+        - pointer-chase
+        - matmul-small
+        - coremark-1c
+        - xs-coremark
+        - xs-dhrystone
+        - xs-microbench
+      metrics:
+        - ipc
+        - mispredict_rate
+        - l1d_mpki
+        - avg_load_latency
+    suite_thresholds:
+      max_ipc_pct: 30.0
+      geomean_ipc_pct: 15.0
+      secondary_pct: 30.0
+      secondary_relax:
+        pointer-chase: 45.0
+
+cae_only:
+  cpu:
+    # Attaches TYPE_CAE_CPU_OOO to the CAE QOM wrapper at accel init.
+    # Registration lands with the OoO mainline; until then this YAML
+    # parses but run-cae.py refuses to launch because `ooo-kmhv3` is
+    # not yet a valid cpu-model value.
+    cpu_model: ooo-kmhv3
+  bpred:
+    # M3' uses a tournament (gshare + local + chooser) to gate AC-K-3
+    # without the full DecoupledBPU machinery. M4'.0 swaps to
+    # DecoupledBPU + TAGE-SC-L under xs-1c-realspec.yaml.
+    bpred_model: tournament
+  memory:
+    # MSHR + fill queue + writeback queue; async dispatch via the
+    # upgraded CaeMemClass interface (lands with hw/cae/cache_mshr.c).
+    memory_model: mshr
+  # Forward-looking knobs for the OoO core are intentionally NOT
+  # declared here until they are actually consumed by run-cae.py.
+  # Placeholder sections (cae_only.ooo_config / cae_only.cache_config /
+  # cae_only.bpred_config) would fail config-equivalence.py as
+  # "cae Phase-1 has not implemented this field yet; populating it
+  # prematurely is a plan drift". The knobs land with the OoO /
+  # cache-MSHR / tournament implementation rounds.
+
+xs_gem5_only:
+  runtime:
+    run_mode: raw_cpt
+    target_isa: RISCV
+    # --disable-difftest is mandatory in this track (AC-K-9): CAE
+    # does not link NEMU .so, and XS-GEM5's own difftest facility is
+    # independent from the offline trace diff. run-xs-gem5.py enforces
+    # this field is true; false fails the pin check.
+    disable_difftest: true
+    raw_cpt: true
+    generic_rv_cpt: benchmarks/build/alu.xs.bin
+
+  cpu:
+    # DerivO3CPU is the customized O3 variant KMH-V3 ships; kmhv3.py
+    # configures it with the full set of knobs below.
+    cpu_type: DerivO3CPU
+    fetch_width: 32
+    decode_width: 8
+    rename_width: 8
+    commit_width: 8
+    issue_width: 6
+    rob_size: 352
+    lq_size: 72
+    sq_size: 56
+    num_phys_int_regs: 224
+    num_phys_float_regs: 256
+    sbuffer_entries: 16
+    bpred:
+      predictor: TournamentBP
+      ftq_size: 64
+      fsq_size: 64
+
+  memory:
+    mem_mode: timing
+    response_latency_ns: 1
+    dram_latency_ns: 50
+    l1i:
+      size: 32kB
+      assoc: 8
+      latency_hit_cycles: 4
+      latency_miss_cycles: 10
+    l1d:
+      size: 32kB
+      assoc: 8
+      latency_hit_cycles: 4
+      latency_miss_cycles: 10
+    l2:
+      size: 512kB
+      assoc: 8
+      latency_hit_cycles: 14
+
+nemu_only:
+  runtime:
+    # NEMU is invoked as a standalone process (never linked into CAE).
+    # `riscv64-gem5-ref_defconfig` is the committed defconfig in
+    # ~/NEMU — it already has CONFIG_DIFFTEST_REF_FOR_GEM5 for
+    # XS-GEM5's own difftest path, which is independent from the
+    # itrace emission added by tools/cae/nemu-itrace.patch.
+    defconfig: riscv64-gem5-ref_defconfig
+    itrace_mode: trace
+    # relative to the per-benchmark report directory, e.g.
+    # reports/xs-1c-functional-alu/nemu-itrace.bin
+    itrace_out: nemu-itrace.bin
+    # Staged build copy of ~/NEMU. `scripts/build-nemu-ref.sh`
+    # places the built interpreter binary at
+    # <repo>/<build_dir>/bin/riscv64-nemu-interpreter. Tier-2
+    # benchmarks override to checkpoint mode in run-xs-suite.sh.
+    build_dir: build/nemu-ref
+    full_trace: false

@@ -1,0 +1,79 @@
+Promote O3 drained-pipeline-after-last-commit from panic to clean exit.
+
+In the pinned XS-GEM5 tree, `Commit::stuckCheckEvent` panics
+40k cycles after the last successful architectural commit
+unless `traceMaybeExitOnPipelineDrainFromStuckCheck()` fires
+first. That helper only fires in trace mode
+(`cpu->isTraceMode() && cpu->isTracePipelineDrained()`), so
+raw-cpt runs (the xs-1c-kmhv3 calibration lane under
+`--raw-cpt --generic-rv-cpt=<bench>.xs.bin`) cannot use the
+trace-mode escape even when the workload has genuinely
+finished.
+
+Observed symptom (Round-3/Round-4 Milestone-E runs): on both
+`alu` and `mem-stream`, `gem5.opt` reaches
+`**** REAL SIMULATION ****`, commits a positive number of
+architectural instructions (lastCommitCycle = 428259 on alu,
+105843 on mem-stream), then the stall monitor fires because
+no further commits occur. No actual livelock in the fetch /
+rename / IEW path is visible — but the commit panic prevents
+`stats.txt` from landing, which in turn prevents
+`xs-gem5.json` and `accuracy-gate.json` from being emitted
+by the CAE driver, blocking Milestone E closure end-to-end.
+
+This patch adds a second escape hatch, analogous to the
+trace-mode one, that fires when the whole CPU pipeline is
+drained (`isCpuDrained()` / public alias
+`isTracePipelineDrained()`). It mirrors the trace-mode
+warning + `exitSimLoop(...)` pattern already in
+`CommitTrace.cc::traceMaybeExitOnPipelineDrainFromStuckCheck`,
+so a drained pipeline in raw-cpt mode emits the same clean
+exit. If the pipeline is NOT drained (genuine livelock
+remaining), control falls through to the existing `panic()`
+— that path is unchanged.
+
+Safety claim: this patch does not suppress any genuine
+livelock, only the benign "workload finished, pipeline
+drained, no more commits" case that the original code treats
+as stuck. Without this patch, Codex's prior review already
+documented that raw-cpt mode would have to rely on the
+upstream XS-GEM5 maintainers for an O3 flow-control fix;
+with this patch the bulk of observed post-workload stalls
+produce real `stats.txt` and downstream JSON artifacts, and
+any residual panic after the patch is a real pipeline-stage
+bug worth escalating with a narrow `--debug-start` window.
+
+Applies post-rsync in `tools/build-xs-gem5-staged.sh` against
+the staged copy of `src/cpu/o3/commit.cc`; the external
+checkout at `~/xiangshan-gem5` stays byte-identical per the
+plan's read-only contract.
+
+--- a/src/cpu/o3/commit.cc
++++ b/src/cpu/o3/commit.cc
+@@ -108,6 +108,26 @@ Commit::Commit(CPU *_cpu, branch_prediction::BPredUnit *_bp, const BaseO3CPUPara
+             if (traceMaybeExitOnPipelineDrainFromStuckCheck()) {
+                 return;
+             }
++            /*
++             * Raw-cpt (non-trace) mode: if the whole CPU
++             * pipeline is drained after the last successful
++             * architectural commit, the "stuck" condition is
++             * actually "workload finished and there is nothing
++             * left to retire". Promote that case from a panic
++             * to a clean exit so stats.txt + JSON artifacts
++             * get written, mirroring the trace-mode escape
++             * hatch above.
++             */
++            if (cpu->isTracePipelineDrained()) {
++                warn(
++                    "[Commit] Pipeline drained after last "
++                    "architectural commit (lastCommitCycle=%lu, "
++                    "curCycle=%lu); exiting cleanly.\n",
++                    lastCommitCycle, cpu->curCycle());
++                exitSimLoop(
++                    "O3 CPU drained after last commit");
++                return;
++            }
+ 
+             if (auto inst = rob->readHeadInst(0)) {
+                 warn("can't commit inst %s\n", inst->genDisassembly());

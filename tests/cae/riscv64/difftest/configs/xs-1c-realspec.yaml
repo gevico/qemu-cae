@@ -1,0 +1,270 @@
+# Paired CAE <-> XiangShan-GEM5 (KMH-V3) difftest config — M4'
+# real-speculation gate (xs-1c-realspec).
+#
+# Pairs CAE's cpu-model=ooo-kmhv3 + bpred-model=tage-sc-l +
+# memory-model=mshr against XiangShan GEM5's kmhv3.py DecoupledBPU +
+# TAGE-SC-L + real-speculation pipeline. NEMU (~/NEMU pin
+# d0736eef66608ffbfd789cc26ef8e4de31639ee8) still supplies the
+# functional difftest reference — tier-1 retired-instruction trace
+# byte-diff plus tier-2 periodic architectural-state checkpoints.
+#
+# Gate threshold follows AC-K-4: max IPC error <= 15 % and
+# geomean IPC error <= 8 % on the M4' KPI workload set. The M4'
+# KPI set is tier-1 U tier-2 INCLUDING `frontend_sensitive: true`
+# benchmarks (which AC-K-3 excluded) — `branchy` is in scope here
+# because DecoupledBPU + TAGE-SC-L + I-cache now cover the
+# front-end.
+#
+# `config-equivalence.py` validates every xs_gem5_only / nemu_only
+# leaf against the consumed-field tables. The timing_pair contract
+# tells diff.py which two JSON reports to compare.
+#
+# Round 13 lands this YAML alongside hw/cae/bpred/tage_sc_l.c so
+# the M4' calibration round has a real config to target. The
+# remaining M4' deliverables (hw/cae/bpred/decoupled_bpu.c,
+# I-cache timing model, t-tcg-spec-path) are queued for later
+# rounds; the fields they will add to cae_only.* land when their
+# source files land, not prematurely.
+
+common:
+  contract:
+    schema_name: cae_gem5_difftest
+    schema_version: 1
+    config_name: xs-1c-realspec
+    timing_pair: [cae, xs-gem5]
+
+  benchmark:
+    name: alu                     # alu | mem-stream | pointer-chase |
+                                  # matmul-small | coremark-1c |
+                                  # branchy (frontend_sensitive;
+                                  # joins the KPI set at AC-K-4)
+    qemu_binary: benchmarks/build/alu.qemu.riscv
+    xs_raw_binary: benchmarks/build/alu.xs.bin
+    argv: []
+    iteration_count: 100000
+    measurement_window:
+      kind: ebreak_sentinel
+    num_threads: 1
+
+  cpu:
+    core_count: 1
+    clock_freq_hz: 2000000000
+    isa: rv64gc
+
+  memory:
+    dram_size: 268435456
+
+  reproducibility:
+    rng_seed: 1
+    cold_start: true
+
+  measurement:
+    sample_stats_at: ebreak
+    metrics:
+      - cycles
+      - insns
+      - ipc
+      - mispredict_rate
+      - l1d_mpki
+      - avg_load_latency
+    thresholds:
+      # Per-metric relative-error thresholds (percent). AC-K-4
+      # tightens from AC-K-3's 30 % to 15 % on IPC and allows up to
+      # 20 % on secondary metrics (per-benchmark relaxation lives in
+      # suite_thresholds.secondary_relax). AC-K-5 will tighten these
+      # further to 10 % / 15 %.
+      ipc: 15.0
+      mispredict_rate: 20.0
+      l1d_mpki: 20.0
+      avg_load_latency: 20.0
+    noise_floor:
+      # Same absolute-magnitude floors as xs-1c-functional — keeps
+      # the skip semantic conservative under KMH-V3's higher IPC.
+      mispredict_rate: 0.001
+      avg_load_latency: 1.0
+      l1d_mpki: 0.01
+    suite:
+      # AC-K-4 KPI set. Round history:
+      #   R13: added `branchy` (assumed full frontend cover)
+      #   R14 BS-34: dropped out — only TAGE-SC-L landed
+      #   R15: re-added with DecoupledBPU delivery
+      #   R16 BS-37: dropped back out — retire-bound predict
+      #     path meant the FTQ was dormant, and `t-icache`
+      #     was still missing
+      #   R17: frontend hook at lookup_tb_ptr made the FTQ
+      #     live on the engine path (first of the two
+      #     conditions for branchy scope)
+      #   R18: `t-icache` lands — separate I-cache tied to
+      #     CAE_MEM_HOOK_FETCH routing. Both conditions
+      #     for honest AC-K-4 coverage of branchy now hold:
+      #     live decoupled frontend AND live instruction-
+      #     cache model. `branchy` returns to the KPI set.
+      benchmarks:
+        - alu
+        - mem-stream
+        - pointer-chase
+        - matmul-small
+        - coremark-1c
+        - branchy
+        # Round 24 AC-K-4 benchmark lane:
+        #   spec-mem-leak-check: marker-address
+        #     speculative-store-leak negative regression
+        #     (plan.md:93). In DEC-4 mode the trap arm is
+        #     unreachable architecturally so spec_marker stays
+        #     intact; a future real-spec bug that leaked a
+        #     wrong-path store past squash would corrupt
+        #     spec_marker and the tier-1 byte-diff harness
+        #     would catch it.
+        #   checkpoint-stress: high-density unpredictable
+        #     branch workload (plan.md:92). Drives 100 000+
+        #     mispredictable events so future real-spec
+        #     save/restore is stressed; currently provides
+        #     a real BPred / frontend workload for the M4'
+        #     KPI surface.
+        - spec-mem-leak-check
+        - checkpoint-stress
+        - xs-coremark
+        - xs-dhrystone
+        - xs-microbench
+      metrics:
+        - ipc
+        - mispredict_rate
+        - l1d_mpki
+        - avg_load_latency
+    suite_thresholds:
+      max_ipc_pct: 15.0
+      geomean_ipc_pct: 8.0
+      secondary_pct: 20.0
+      secondary_relax:
+        pointer-chase: 30.0
+        branchy: 25.0
+
+cae_only:
+  # Round 41 directive step 5: optional deterministic
+  # speculative-memory stimulus program. When set, run-cae.py
+  # forwards this string to the CaeEngine via QMP qom-set on
+  # /objects/cae-engine.spec-stimulus-program BEFORE
+  # continuing the VM. The CAE drain then parses + auto-queues
+  # these stimuli on every live-window drain, exercising the
+  # round-34/35 cache gates + round-39 sbuffer staging path on
+  # the real engine-driven path.
+  #
+  # Format: <op>:<addr>:<bytes>[:<value>][;...]
+  #   op    : r (READ) | w (WRITE) | f (FETCH)
+  #   addr  : 0x-prefixed hex
+  #   bytes : 1 | 2 | 4 | 8
+  #   value : 0x-prefixed hex (required for WRITE, ignored otherwise)
+  #
+  # Empty string or omitted = no auto-queue (current default).
+  # Round 42 will set this to the live checkpoint-stress
+  # program; round 43 adds a spec-mem-leak-check variant.
+  spec_stimulus_program: ""
+  cpu:
+    # Attaches TYPE_CAE_CPU_OOO via the accel-class cpu-model knob.
+    cpu_model: ooo-kmhv3
+  bpred:
+    # Round 15 M4' upgrade: DecoupledBPU wraps an inner
+    # TAGE-SC-L (Seznec's ISCA-2016 family) with a FTQ/FSQ
+    # front-end queue layer. Round 13 landed the TAGE-SC-L
+    # predictor on its own (bpred-model=tage-sc-l); round 15
+    # builds the decoupled-frontend layer on top so fetch
+    # can run ahead of resolution and mispredict recovery is
+    # scoped to a frontend squash rather than an entire
+    # cpu_exec slice. TAGE-SC-L remains reachable via
+    # bpred-model=tage-sc-l if a paired YAML wants the flat
+    # predictor; this realspec config selects the full stack.
+    bpred_model: decoupled
+  memory:
+    memory_model: mshr
+    # Round 14 BS-34: populate the CAE MSHR knobs that
+    # run-cae.py already accepts (see _CAE_ACCEL_FIELD_MAP in
+    # tests/cae-difftest/scripts/run-cae.py:81-83). Round 13's
+    # realspec left these at defaults (mshr-size=1 collapses
+    # misses serially) while the XS side drove a realspec
+    # target — asymmetric, and flagged by Codex. kmhv3.py's
+    # L1D MSHR depth is 8, so align the CAE side.
+    mshr:
+      mshr_size: 8
+      fill_queue_size: 8
+      writeback_queue_size: 8
+    # Round 18 t-icache: CAE side now has a separate
+    # instruction cache. Knobs match the xs_gem5_only.memory.
+    # l1i block below so the CAE / XS fetch-side models are
+    # structurally comparable. The CaeCache parameters go
+    # through _CAE_ACCEL_FIELD_MAP (see run-cae.py) which
+    # round 18 extends with five icache-* keys.
+    l1i:
+      size_bytes: 32768
+      assoc: 8
+      line_size: 64
+      latency_hit_cycles: 4
+      latency_miss_cycles: 10
+
+xs_gem5_only:
+  runtime:
+    run_mode: raw_cpt
+    target_isa: RISCV
+    disable_difftest: true
+    raw_cpt: true
+    generic_rv_cpt: benchmarks/build/alu.xs.bin
+
+  cpu:
+    # DerivO3CPU + KMH-V3 realspec knobs. Scaled to kmhv3.py's
+    # realspec baseline; M5' calibration may tune the widths.
+    cpu_type: DerivO3CPU
+    fetch_width: 32
+    decode_width: 6
+    rename_width: 6
+    commit_width: 6
+    issue_width: 6
+    rob_size: 256
+    lq_size: 80
+    sq_size: 56
+    num_phys_int_regs: 224
+    num_phys_float_regs: 256
+    sbuffer_entries: 16
+    bpred:
+      # xs-1c-realspec's XS-side upgrade: the real DecoupledBPU +
+      # TAGE-SC-L pair that kmhv3.py configures. CAE-side
+      # DecoupledBPU ftq/fsq scaffolding is the queued M4'
+      # deliverable (t-bpred-decoupled); the CAE side currently
+      # routes through the TAGE-SC-L skeleton without a DecoupledBPU
+      # front-end, so the suite's first-order signal on this knob
+      # is the TAGE-SC-L learning curve rather than the front-end
+      # decoupling. Mismatches in the frontend KPIs (fetch-stall,
+      # re-direct count) will land with DecoupledBPU.
+      predictor: DecoupledBPU
+      tage_sc_l: true
+      ftq_size: 64
+      fsq_size: 64
+
+  memory:
+    mem_mode: timing
+    response_latency_ns: 1
+    dram_latency_ns: 50
+    l1i:
+      size: 32kB
+      assoc: 8
+      latency_hit_cycles: 4
+      latency_miss_cycles: 10
+    l1d:
+      size: 32kB
+      assoc: 8
+      latency_hit_cycles: 4
+      latency_miss_cycles: 10
+    l2:
+      size: 512kB
+      assoc: 8
+      latency_hit_cycles: 14
+    l3:
+      size: 4MB
+      assoc: 16
+      latency_hit_cycles: 40
+
+nemu_only:
+  runtime:
+    defconfig: riscv64-gem5-ref_defconfig
+    itrace_mode: trace
+    itrace_out: nemu-itrace.bin
+    build_dir: build/nemu-ref
+    full_trace: false

@@ -1,0 +1,15 @@
+# -*- Mode: makefile -*-
+#
+# RISC-V 64 CAE user-mode tests
+#
+# User-mode tests run under qemu-riscv64 (linux-user) with CAE
+# instrumentation. These test instruction classification and basic
+# timing without requiring a full machine model.
+
+VPATH += $(SRC_PATH)/tests/cae/riscv64
+
+# User-mode tests (placeholder for future user-mode CAE support)
+USER_TESTS =
+
+run-user:
+	@echo "CAE riscv64 user-mode tests: none defined yet"

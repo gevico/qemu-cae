@@ -10,6 +10,10 @@ config HVF
 config TCG
     bool
 
+config CAE
+    bool
+    select TCG
+
 config KVM
     bool
 

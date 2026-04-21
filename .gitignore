@@ -3,6 +3,7 @@
 /.cache/
 /.vscode/
 *.pyc
+__pycache__/
 .sdk
 .stgit-*
 .git-submodule-status
@@ -19,4 +20,21 @@ GTAGS
 *.depend_raw
 *.swp
 *.patch
+!tools/cae/*.patch
 *.gcov
+.codex
+.humanize/
+build-cae/
+build-cae-*/
+subprojects/.wraplock
+
+# CAE build artifacts
+*.riscv
+*.xs.bin
+*.dis
+*.itrace
+*.trace
+
+# CAE difftest reports (generated at runtime)
+tests/cae/*/difftest/reports/
+tests/cae/*/difftest/benchmarks/build/

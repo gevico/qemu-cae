@@ -4,6 +4,7 @@ system_ss.add(files('accel-system.c', 'accel-blocker.c', 'accel-qmp.c', 'accel-i
 user_ss.add(files('accel-user.c'))
 
 subdir('tcg')
+subdir('cae')
 if have_system
   subdir('hvf')
   subdir('whpx')

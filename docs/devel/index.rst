@@ -35,4 +35,5 @@ the :ref:`tcg_internals`.
    index-api
    index-internals
    index-tcg
+   index-cae
    codebase
