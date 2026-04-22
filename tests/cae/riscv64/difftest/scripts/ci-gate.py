@@ -57,6 +57,7 @@ DIFFTEST_SRC = REPO_ROOT / "tests" / "cae" / "riscv64" / "difftest"
 CAE_BUILD_DIR = Path(os.environ.get("CAE_BUILD_DIR", REPO_ROOT / "build"))
 CONFIGS_DIR = DIFFTEST_SRC / "configs"
 BENCH_DIR = DIFFTEST_SRC / "benchmarks"
+BENCH_BUILD_DIR = CAE_BUILD_DIR / "tests" / "cae" / "difftest" / "benchmarks"
 REPORTS_DIR = CAE_BUILD_DIR / "tests" / "cae" / "riscv64" / "difftest" / "reports"
 MANIFEST = BENCH_DIR / "MANIFEST.json"
 SCRIPTS = DIFFTEST_SRC / "scripts"
@@ -118,7 +119,7 @@ def run_benchmark_manifest(_args: argparse.Namespace) -> int:
             rc = 1
             continue
         for vname, vinfo in variants.items():
-            elf = BENCH_DIR / vinfo["binary"]
+            elf = BENCH_BUILD_DIR / vinfo["binary"]
             if not elf.is_file():
                 print(
                     f"ci-gate.py: benchmark_manifest: missing {elf} "

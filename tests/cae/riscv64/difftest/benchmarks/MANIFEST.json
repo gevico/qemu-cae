@@ -60,7 +60,7 @@
         },
         "se": {
           "binary": "alu.se.riscv",
-          "sha256": "c9cfed82206103edfe3c38817a3d1671bc12a6a4e8e82ad16d87b2230a43d60c",
+          "sha256": "54e8b729eb673ff5ec11dac427074bcb1a7ebf33e2e9a0e6f242ad174e78525b",
           "sentinel_addr": "0x00010070"
         },
         "xs": {
@@ -96,7 +96,7 @@
         },
         "se": {
           "binary": "mem-stream.se.riscv",
-          "sha256": "e23022d88e6656c8161abc72e53142934ec1d8cbd021d467a1ea87bdab4270f9",
+          "sha256": "4e9504bfcda57a5ddee2994770000159e2886c372f49ae18cbab03fab6e450c7",
           "sentinel_addr": "0x00010080"
         },
         "xs": {
@@ -132,7 +132,7 @@
         },
         "se": {
           "binary": "pointer-chase.se.riscv",
-          "sha256": "172172fa1dab03a4141702d0b2335de604c9eee37a2f24f7d32782d78382ce11",
+          "sha256": "9a9b640d0ddaac8e3b46553d1c8a5f9587b0edab8ea898545179e3ae933af216",
           "sentinel_addr": "0x00010080"
         },
         "xs": {
@@ -168,8 +168,8 @@
         },
         "se": {
           "binary": "branchy.se.riscv",
-          "sha256": "ff41a41b756f09d6c5bb5f0a9362806c0b4991923736e679fe7de803a906c433",
-          "sentinel_addr": "0x00010070"
+          "sha256": "5fae269cbeb68b24ea42722b5c905a4f4a4261f76e40d6c411a1f78b7fc5cfb7",
+          "sentinel_addr": "0x00010080"
         },
         "xs": {
           "binary": "branchy.xs.bin",
@@ -204,7 +204,7 @@
         },
         "se": {
           "binary": "matmul-small.se.riscv",
-          "sha256": "4692fddafba2bc2643164e0b25766de92cb8d1c3f1acc5fa80a6a8a7117fbee3",
+          "sha256": "05ce4ab9a9bf25f575903bf2d6a3ef2c624dffd8289c8d02480d7bdc0ca289f9",
           "sentinel_addr": "0x000103c0"
         },
         "xs": {
@@ -240,7 +240,7 @@
         },
         "se": {
           "binary": "coremark-1c.se.riscv",
-          "sha256": "9d15db57ccae33604ed10a7ccdd40e93c321eea882655836f150283667a10513",
+          "sha256": "7198be6c989ad2dd0d39a76713f6d03ab00f9e7d68cd20ff093806283538ce9f",
           "sentinel_addr": "0x00010510"
         },
         "xs": {
@@ -276,7 +276,7 @@
         },
         "se": {
           "binary": "spec-mem-leak-check.se.riscv",
-          "sha256": "8206081c09fa09f7c1b5584cfc6bd25b67c4f1f1ffe804103f57848e61ea8a13",
+          "sha256": "eb0abfb742c3c99199409fe7f3730826fbb70e959fa400705de4306220492e5f",
           "sentinel_addr": "0x00010120"
         },
         "xs": {
@@ -312,7 +312,7 @@
         },
         "se": {
           "binary": "checkpoint-stress.se.riscv",
-          "sha256": "0e4e9143f60beb1b6e890c436d57ebddef69799220145359fe74b08dca8bcfc8",
+          "sha256": "a572696ebbbe7b515a23bbb7a9a92eb669f2bb4b8cedeccb3990da3a48085bce",
           "sentinel_addr": "0x000100c0"
         },
         "xs": {
@@ -393,8 +393,8 @@
         },
         "se": {
           "binary": "coremark-full.se.riscv",
-          "sha256": "baee06a1927b84e50630809e89afe2034dca14d9167ebcb8dd247ecdfc3c627f",
-          "sentinel_addr": "0x00012280"
+          "sha256": "12683ab2a006d2b81934e5cb5cf69b0be9f198502f9059d6e380d091c133a895",
+          "sentinel_addr": "0x000121a0"
         },
         "xs": {
           "binary": "coremark-full.xs.bin",
@@ -429,7 +429,7 @@
         },
         "se": {
           "binary": "lsu_store_forward.se.riscv",
-          "sha256": "e7ef3405b2e4cb73442101636212b880b6994c526ac354a32b76367211ef2647",
+          "sha256": "65eeedfbe882d1a11f2687139a8af9dac36d353c5ac87c8d25fb0e0c848543f2",
           "sentinel_addr": "0x00010090"
         },
         "xs": {
@@ -444,7 +444,7 @@
         "kind": "ebreak_sentinel"
       },
       "num_threads": 1,
-      "expected_insns_approx": 600000,
+      "expected_insns_approx": 1000018,
       "description": "Store-to-load forwarding: consecutive store+load to the same address over 100K iterations; exercises store buffer forwarding path."
     },
     "lsu_stride_walk": {
@@ -465,7 +465,7 @@
         },
         "se": {
           "binary": "lsu_stride_walk.se.riscv",
-          "sha256": "7871b43545b66db48c8c4cb74c73c87d99a13c478b7359b55c6127acad28ef26",
+          "sha256": "72ce24cb6f54f5a6492b1d103ce5a9ea4d3af20a0a55c42fe11008851c31a611",
           "sentinel_addr": "0x00010090"
         },
         "xs": {
@@ -480,7 +480,7 @@
         "kind": "ebreak_sentinel"
       },
       "num_threads": 1,
-      "expected_insns_approx": 150000,
+      "expected_insns_approx": 410218,
       "description": "Stride-16 walk over a 32 KiB array, 200 outer iterations; exercises prefetcher and cache-line utilization."
     },
     "lsu_mlp": {
@@ -501,7 +501,7 @@
         },
         "se": {
           "binary": "lsu_mlp.se.riscv",
-          "sha256": "44176db12253689456506c30ca15d0afa8f8b45d0b33075cb83724618dee7e59",
+          "sha256": "bfc28c0f088399d3aa861fbfb159edbfb7998106a3b4c05025c41f0fba45c443",
           "sentinel_addr": "0x00010140"
         },
         "xs": {
@@ -516,7 +516,7 @@
         "kind": "ebreak_sentinel"
       },
       "num_threads": 1,
-      "expected_insns_approx": 600000,
+      "expected_insns_approx": 2099540,
       "description": "8-way independent load streams over 512-element arrays, 100 outer iterations; exercises MSHR concurrency and memory-level parallelism."
     },
     "lsu_overlap_mix": {
@@ -537,7 +537,7 @@
         },
         "se": {
           "binary": "lsu_overlap_mix.se.riscv",
-          "sha256": "2c90374b9e2fae6be9c3b7f1ad29c82a0b47ebee4983354e8b4a75e8be334ce6",
+          "sha256": "bbc71b2ab902a75b4a97ffb72a6dde23edcbbdbf4aa7263081ae993c563ca365",
           "sentinel_addr": "0x000100a0"
         },
         "xs": {
@@ -552,7 +552,7 @@
         "kind": "ebreak_sentinel"
       },
       "num_threads": 1,
-      "expected_insns_approx": 1000000,
+      "expected_insns_approx": 1500018,
       "description": "Partial-overlap store-to-load forwarding: interleaves narrow (32-bit) stores with wide (64-bit) loads at overlapping addresses; exercises store buffer merging and forwarding corner cases."
     },
     "lsu_pair_alias": {
@@ -568,28 +568,28 @@
       "variants": {
         "qemu": {
           "binary": "lsu_pair_alias.qemu.riscv",
-          "sha256": "ba34e74472075cbad42debce60b117287a61d5a0e44870e374c42440a253e814",
-          "sentinel_addr": "0x800000a0"
+          "sha256": "e923ee92e33f1e65f419228e5f2d89cdd110ce0148a174d25858de11c2c29711",
+          "sentinel_addr": "0x80001000"
         },
         "se": {
           "binary": "lsu_pair_alias.se.riscv",
-          "sha256": "808bee8398939bd7e9b0bec8824071bc93a699a210fa31ee43f7efc7ced516d4",
-          "sentinel_addr": "0x000100a0"
+          "sha256": "e765627075b1fcfed23ffbe5038d99fcfc19a0432f1286c7401ada668b3ca691",
+          "sentinel_addr": "0x00011000"
         },
         "xs": {
           "binary": "lsu_pair_alias.xs.bin",
-          "sha256": "643bf81d8979456cc07f2d617ebde66a5384d62580ea3175cd6cbbf451bbded2",
+          "sha256": "8e9ca23d4edb146fd7a700aa24e9f03e9e05b18742e22900d0a0db66da8b8ccd",
           "derived_from": "qemu"
         }
       },
       "argv": [],
-      "iteration_count": 80000,
+      "iteration_count": 1000,
       "measurement_window": {
         "kind": "ebreak_sentinel"
       },
       "num_threads": 1,
-      "expected_insns_approx": 800000,
-      "description": "Address aliasing: alternating aliased and non-aliased store+load pairs across 16 slots; exercises store disambiguation."
+      "expected_insns_approx": 965021,
+      "description": "Address aliasing: page-offset-matched buffers (4 KiB aligned) create aliased store+load pairs; a third buffer at a distinct offset provides the non-aliased baseline. Exercises store disambiguation."
     },
     "qsort": {
       "tier": 1,
@@ -609,7 +609,7 @@
         },
         "se": {
           "binary": "qsort.se.riscv",
-          "sha256": "f3b802a162dc19d79fcccf5facba3a9436544f9b6cbefe3d82d8b1dda9bd6834",
+          "sha256": "43638ee2f326f3169f6862edc201f03714b51035cb31a0ad0cc0b7ef8419efa3",
           "sentinel_addr": "0x00010190"
         },
         "xs": {
@@ -624,7 +624,7 @@
         "kind": "ebreak_sentinel"
       },
       "num_threads": 1,
-      "expected_insns_approx": 400000,
+      "expected_insns_approx": 504138,
       "description": "Clean-room quicksort of 256 xorshift-generated 32-bit integers, 20 passes; unpredictable branches + pointer-intensive memory access."
     },
     "spmv": {
@@ -645,7 +645,7 @@
         },
         "se": {
           "binary": "spmv.se.riscv",
-          "sha256": "c17f3ae04130f29d0ab9edc1e006dcab0cb829a0d0b4454cb0607718d702773d",
+          "sha256": "aeb0b4d643b431585b66a9ffed7d73a58dfd5ade684e16f67de064dcfd7a0167",
           "sentinel_addr": "0x000101d0"
         },
         "xs": {
@@ -660,7 +660,7 @@
         "kind": "ebreak_sentinel"
       },
       "num_threads": 1,
-      "expected_insns_approx": 150000,
+      "expected_insns_approx": 287498,
       "description": "Sparse matrix-vector multiply in CSR format (64 rows, 384 non-zeros), 50 iterations with feedback; irregular indirect memory access pattern."
     },
     "rsort": {
@@ -681,7 +681,7 @@
         },
         "se": {
           "binary": "rsort.se.riscv",
-          "sha256": "aa8b891b113c00e9e04f601a009646717f0cacf5c7dfece2e9b47be3efd7ee6e",
+          "sha256": "ed3b75038317531ad131b2741a169c00fa52afbe8187cf832bc1ebe66a3c95d2",
           "sentinel_addr": "0x000101c0"
         },
         "xs": {
@@ -696,7 +696,7 @@
         "kind": "ebreak_sentinel"
       },
       "num_threads": 1,
-      "expected_insns_approx": 400000,
+      "expected_insns_approx": 666376,
       "description": "LSD radix sort (base-256) of 512 xorshift-generated 32-bit integers, 10 passes; streaming memory with minimal branches."
     },
     "towers": {
@@ -712,27 +712,27 @@
       "variants": {
         "qemu": {
           "binary": "towers.qemu.riscv",
-          "sha256": "d2995981c65ca6ade102e1bf5956d3d5e2c4ed9bebf1e37a60af5c654d8289c6",
+          "sha256": "e0db82db47bdb8888e56afd6a437e7d309b6b18a2cdf5ead8bb00cc7cdb39add",
           "sentinel_addr": "0x80000120"
         },
         "se": {
           "binary": "towers.se.riscv",
-          "sha256": "aa80b9098f440ae51bdc0f06199c99b6dc6b6a04bda7675c25bf47ded737fae3",
+          "sha256": "3f4f9da4a311ac65b9fca20326766db57691a315b6317130b1f933ec1d8acfa9",
           "sentinel_addr": "0x00010120"
         },
         "xs": {
           "binary": "towers.xs.bin",
-          "sha256": "7d730c653c6b7d4e58dfa150bb2d7be4ee85db5eac9a56eb662fb05e93437f48",
+          "sha256": "f872b5a087410df3d90b31d26b2056e87b558f07796db382b3906150732e3fca",
           "derived_from": "qemu"
         }
       },
       "argv": [],
-      "iteration_count": 5,
+      "iteration_count": 4,
       "measurement_window": {
         "kind": "ebreak_sentinel"
       },
       "num_threads": 1,
-      "expected_insns_approx": 1600000,
+      "expected_insns_approx": 4456376,
       "description": "Tower of Hanoi with 15 discs, 5 passes; recursive call-intensive, exercises the return address stack (RAS)."
     },
     "stream_triad": {
@@ -749,28 +749,28 @@
       "variants": {
         "qemu": {
           "binary": "stream_triad.qemu.riscv",
-          "sha256": "5fcaa7c41867762fd591d3b6c9d5a82b1de2b50ab23ce7506582d78375759229",
+          "sha256": "060b4f28e35be0e7a499ddfc40c802d50671750a425190f0e60e09e1ab3cd0d3",
           "sentinel_addr": "0x80000110"
         },
         "se": {
           "binary": "stream_triad.se.riscv",
-          "sha256": "e00385ebd8ac88410e8d19bcec22150142207f3a0a9894d47e2651402cd57ae1",
+          "sha256": "b9b688050cfbb1edfdbf93a4fc7aa97ae8fcdb1334ae80686c2c5a4bd53b0b6a",
           "sentinel_addr": "0x00010110"
         },
         "xs": {
           "binary": "stream_triad.xs.bin",
-          "sha256": "baa9b29fbcbbd5fc5f04a0e0ea96b0a2604c4443360dd35c7a23b5690c2ddba0",
+          "sha256": "4e0271b4254e8fdfb08831f59356c1ef2fe23739314705c73d40159d792a0bf8",
           "derived_from": "qemu"
         }
       },
       "argv": [],
-      "iteration_count": 100,
+      "iteration_count": 22,
       "measurement_window": {
         "kind": "ebreak_sentinel"
       },
       "num_threads": 1,
-      "expected_insns_approx": 550000,
-      "description": "STREAM Triad (a[i]=b[i]+s*c[i]) over 1024-element double arrays, 100 iterations; 3-way streaming bandwidth with FP multiply-add."
+      "expected_insns_approx": 53480,
+      "description": "STREAM Triad (a[i]=b[i]+s*c[i]) over 256-element double arrays, 22 iterations; 3-way streaming bandwidth with FP multiply-add."
     }
   }
 }

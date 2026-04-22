@@ -27,10 +27,11 @@ SECTIONS
     .data      : { *(.data .data.*) }
 
     . = ALIGN(16);
-    .bss       : { *(.bss .bss.*) *(COMMON) }
-
-    . = ALIGN(16);
-    _stack_bottom = .;
-    . += 0x10000;
-    _stack_top = .;
+    .bss       : {
+        *(.bss .bss.*) *(COMMON)
+        . = ALIGN(16);
+        _stack_bottom = .;
+        . += 0x10000;                       /* 64 KiB stack */
+        _stack_top = .;
+    }
 }

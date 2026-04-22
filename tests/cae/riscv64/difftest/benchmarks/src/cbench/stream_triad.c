@@ -2,8 +2,8 @@
 
 #include <stdint.h>
 
-#define ARRAY_SIZE 1024
-#define OUTER_ITERS 100
+#define ARRAY_SIZE 256
+#define OUTER_ITERS 22
 
 static double a[ARRAY_SIZE];
 static double b[ARRAY_SIZE];

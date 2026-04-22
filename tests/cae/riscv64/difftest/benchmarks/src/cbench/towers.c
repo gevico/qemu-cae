@@ -17,7 +17,7 @@ static void hanoi(int n, int from, int to, int aux)
 
 void workload(void)
 {
-    for (int pass = 0; pass < 5; pass++) {
+    for (int pass = 0; pass < 4; pass++) {
         move_count = 0;
         hanoi(NUM_DISCS, 0, 2, 1);
     }

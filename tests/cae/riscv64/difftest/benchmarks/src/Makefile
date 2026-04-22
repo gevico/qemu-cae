@@ -75,7 +75,7 @@ C_DISASMS   := $(C_ELFS:.riscv=.dis)
 build-all: $(ELFS) $(DISASMS) $(XS_BINS) $(COREMARK_TARGETS) \
            $(C_ELFS) $(C_DISASMS) $(C_XS_BINS)
 
-xs-bins: $(XS_BINS) $(BENCH_OUT)/coremark-full.xs.bin
+xs-bins: $(XS_BINS) $(C_XS_BINS) $(BENCH_OUT)/coremark-full.xs.bin
 
 $(BENCH_OUT):
 	mkdir -p $@
@@ -95,12 +95,14 @@ $(BENCH_OUT)/%.xs.bin: $(BENCH_OUT)/%.qemu.riscv | $(BENCH_OUT)
 	$(OBJDUMP) -d $< >$@
 
 # --- Generic C benchmarks (cbench/) ---
+# Per-benchmark CFLAGS override: set C_BENCH_EXTRA_CFLAGS_<name> for custom flags.
+# Example: C_BENCH_EXTRA_CFLAGS_stream_triad := -ffast-math
 
 $(BENCH_OUT)/%.qemu.riscv: cbench/%.c bench.S $(LINK_QEMU) | $(BENCH_OUT)
-	$(CC) $(C_BENCH_CFLAGS) -T $(LINK_QEMU) -o $@ bench.S $<
+	$(CC) $(C_BENCH_CFLAGS) $(C_BENCH_EXTRA_CFLAGS_$*) -T $(LINK_QEMU) -o $@ bench.S $<
 
 $(BENCH_OUT)/%.se.riscv: cbench/%.c bench.S $(LINK_SE) | $(BENCH_OUT)
-	$(CC) $(C_BENCH_CFLAGS) -DGEM5_SE -T $(LINK_SE) -o $@ bench.S $<
+	$(CC) $(C_BENCH_CFLAGS) $(C_BENCH_EXTRA_CFLAGS_$*) -DGEM5_SE -T $(LINK_SE) -o $@ bench.S $<
 
 # --- CoreMark full (C benchmark) ---
 
