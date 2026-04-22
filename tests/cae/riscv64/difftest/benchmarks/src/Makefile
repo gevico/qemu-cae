@@ -57,9 +57,23 @@ COREMARK_TARGETS := $(BENCH_OUT)/coremark-full.qemu.riscv \
                     $(BENCH_OUT)/coremark-full.se.riscv \
                     $(BENCH_OUT)/coremark-full.xs.bin
 
+# Generic C benchmarks (cbench/ subdirectory)
+C_BENCHMARKS := lsu_store_forward lsu_stride_walk lsu_mlp \
+                lsu_overlap_mix lsu_pair_alias \
+                qsort spmv rsort towers stream_triad
+
+C_BENCH_CFLAGS := $(COMMON_FLAGS) -O1 -fno-builtin
+
+C_QEMU_ELFS := $(addprefix $(BENCH_OUT)/,$(addsuffix .qemu.riscv,$(C_BENCHMARKS)))
+C_SE_ELFS   := $(addprefix $(BENCH_OUT)/,$(addsuffix .se.riscv,$(C_BENCHMARKS)))
+C_XS_BINS   := $(addprefix $(BENCH_OUT)/,$(addsuffix .xs.bin,$(C_BENCHMARKS)))
+C_ELFS      := $(C_QEMU_ELFS) $(C_SE_ELFS)
+C_DISASMS   := $(C_ELFS:.riscv=.dis)
+
 .PHONY: build-all xs-bins clean
 
-build-all: $(ELFS) $(DISASMS) $(XS_BINS) $(COREMARK_TARGETS)
+build-all: $(ELFS) $(DISASMS) $(XS_BINS) $(COREMARK_TARGETS) \
+           $(C_ELFS) $(C_DISASMS) $(C_XS_BINS)
 
 xs-bins: $(XS_BINS) $(BENCH_OUT)/coremark-full.xs.bin
 
@@ -79,6 +93,14 @@ $(BENCH_OUT)/%.xs.bin: $(BENCH_OUT)/%.qemu.riscv | $(BENCH_OUT)
 
 %.dis: %.riscv
 	$(OBJDUMP) -d $< >$@
+
+# --- Generic C benchmarks (cbench/) ---
+
+$(BENCH_OUT)/%.qemu.riscv: cbench/%.c bench.S $(LINK_QEMU) | $(BENCH_OUT)
+	$(CC) $(C_BENCH_CFLAGS) -T $(LINK_QEMU) -o $@ bench.S $<
+
+$(BENCH_OUT)/%.se.riscv: cbench/%.c bench.S $(LINK_SE) | $(BENCH_OUT)
+	$(CC) $(C_BENCH_CFLAGS) -DGEM5_SE -T $(LINK_SE) -o $@ bench.S $<
 
 # --- CoreMark full (C benchmark) ---
 

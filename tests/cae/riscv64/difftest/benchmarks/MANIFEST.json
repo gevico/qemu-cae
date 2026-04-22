@@ -410,6 +410,367 @@
       "num_threads": 1,
       "expected_insns_approx": 500000,
       "description": "Full EEMBC CoreMark (1 iteration, TOTAL_DATA_SIZE=50). Too heavy for one-insn-per-tb automated difftest; use for manual performance measurement. Apache-2.0 vendor sources."
+    },
+    "lsu_store_forward": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": false,
+      "source": "src/cbench/lsu_store_forward.c",
+      "variants": {
+        "qemu": {
+          "binary": "lsu_store_forward.qemu.riscv",
+          "sha256": "e4d93529a2289cff3b0550e76ca50e3c7e00b7282c799262af491556c3c39197",
+          "sentinel_addr": "0x80000090"
+        },
+        "se": {
+          "binary": "lsu_store_forward.se.riscv",
+          "sha256": "e7ef3405b2e4cb73442101636212b880b6994c526ac354a32b76367211ef2647",
+          "sentinel_addr": "0x00010090"
+        },
+        "xs": {
+          "binary": "lsu_store_forward.xs.bin",
+          "sha256": "fda5c70e4c4853bf871c0ca99d18b099d28e7f74c7184875dc48f316b5fdf6e1",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 100000,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 600000,
+      "description": "Store-to-load forwarding: consecutive store+load to the same address over 100K iterations; exercises store buffer forwarding path."
+    },
+    "lsu_stride_walk": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": false,
+      "source": "src/cbench/lsu_stride_walk.c",
+      "variants": {
+        "qemu": {
+          "binary": "lsu_stride_walk.qemu.riscv",
+          "sha256": "4258023a00a923e076ae73000cedb1a013dc959df760f3598a62d56f5019a4a5",
+          "sentinel_addr": "0x80000090"
+        },
+        "se": {
+          "binary": "lsu_stride_walk.se.riscv",
+          "sha256": "7871b43545b66db48c8c4cb74c73c87d99a13c478b7359b55c6127acad28ef26",
+          "sentinel_addr": "0x00010090"
+        },
+        "xs": {
+          "binary": "lsu_stride_walk.xs.bin",
+          "sha256": "808ad133f874bbf971fee5498a6ac32badc680fa7c3e92f52e181152b9dc537f",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 200,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 150000,
+      "description": "Stride-16 walk over a 32 KiB array, 200 outer iterations; exercises prefetcher and cache-line utilization."
+    },
+    "lsu_mlp": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": false,
+      "source": "src/cbench/lsu_mlp.c",
+      "variants": {
+        "qemu": {
+          "binary": "lsu_mlp.qemu.riscv",
+          "sha256": "e74cca17f7c9e1bc6c5b5c92d0e00f48f0a37b46b07223cc745fd21caff3dab6",
+          "sentinel_addr": "0x80000150"
+        },
+        "se": {
+          "binary": "lsu_mlp.se.riscv",
+          "sha256": "44176db12253689456506c30ca15d0afa8f8b45d0b33075cb83724618dee7e59",
+          "sentinel_addr": "0x00010140"
+        },
+        "xs": {
+          "binary": "lsu_mlp.xs.bin",
+          "sha256": "d2e27f7ca436539bfd48c85025e1f7c733602b2361a45f90dd781c408dd14612",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 100,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 600000,
+      "description": "8-way independent load streams over 512-element arrays, 100 outer iterations; exercises MSHR concurrency and memory-level parallelism."
+    },
+    "lsu_overlap_mix": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": false,
+      "source": "src/cbench/lsu_overlap_mix.c",
+      "variants": {
+        "qemu": {
+          "binary": "lsu_overlap_mix.qemu.riscv",
+          "sha256": "b8696b91a1792e1b82c1c340c2e3756f9f2f2fcfa416cc22063abfe110b0b77a",
+          "sentinel_addr": "0x800000a0"
+        },
+        "se": {
+          "binary": "lsu_overlap_mix.se.riscv",
+          "sha256": "2c90374b9e2fae6be9c3b7f1ad29c82a0b47ebee4983354e8b4a75e8be334ce6",
+          "sentinel_addr": "0x000100a0"
+        },
+        "xs": {
+          "binary": "lsu_overlap_mix.xs.bin",
+          "sha256": "d79491da83b57017f2a14deec53dee68c03301382151aaa27e41593057ec323d",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 100000,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 1000000,
+      "description": "Partial-overlap store-to-load forwarding: interleaves narrow (32-bit) stores with wide (64-bit) loads at overlapping addresses; exercises store buffer merging and forwarding corner cases."
+    },
+    "lsu_pair_alias": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": false,
+      "source": "src/cbench/lsu_pair_alias.c",
+      "variants": {
+        "qemu": {
+          "binary": "lsu_pair_alias.qemu.riscv",
+          "sha256": "ba34e74472075cbad42debce60b117287a61d5a0e44870e374c42440a253e814",
+          "sentinel_addr": "0x800000a0"
+        },
+        "se": {
+          "binary": "lsu_pair_alias.se.riscv",
+          "sha256": "808bee8398939bd7e9b0bec8824071bc93a699a210fa31ee43f7efc7ced516d4",
+          "sentinel_addr": "0x000100a0"
+        },
+        "xs": {
+          "binary": "lsu_pair_alias.xs.bin",
+          "sha256": "643bf81d8979456cc07f2d617ebde66a5384d62580ea3175cd6cbbf451bbded2",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 80000,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 800000,
+      "description": "Address aliasing: alternating aliased and non-aliased store+load pairs across 16 slots; exercises store disambiguation."
+    },
+    "qsort": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": true,
+      "reset_pc": "0x80000000",
+      "gated": false,
+      "source": "src/cbench/qsort.c",
+      "variants": {
+        "qemu": {
+          "binary": "qsort.qemu.riscv",
+          "sha256": "6ecb01ee5d09ce0d11f8a3d363fa14f216d23ac069d61c4775e775ee6c88881f",
+          "sentinel_addr": "0x800001a0"
+        },
+        "se": {
+          "binary": "qsort.se.riscv",
+          "sha256": "f3b802a162dc19d79fcccf5facba3a9436544f9b6cbefe3d82d8b1dda9bd6834",
+          "sentinel_addr": "0x00010190"
+        },
+        "xs": {
+          "binary": "qsort.xs.bin",
+          "sha256": "6fb3332c4856259b789e59d46b5269c65f452f415be806ea967ce598c80d66f8",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 20,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 400000,
+      "description": "Clean-room quicksort of 256 xorshift-generated 32-bit integers, 20 passes; unpredictable branches + pointer-intensive memory access."
+    },
+    "spmv": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": false,
+      "source": "src/cbench/spmv.c",
+      "variants": {
+        "qemu": {
+          "binary": "spmv.qemu.riscv",
+          "sha256": "7641f67ab88d42a34325ea9dedab07cf6204b593b42938f3460cf6c5d782081d",
+          "sentinel_addr": "0x800001d0"
+        },
+        "se": {
+          "binary": "spmv.se.riscv",
+          "sha256": "c17f3ae04130f29d0ab9edc1e006dcab0cb829a0d0b4454cb0607718d702773d",
+          "sentinel_addr": "0x000101d0"
+        },
+        "xs": {
+          "binary": "spmv.xs.bin",
+          "sha256": "2fbbdb31861b01537f64c3234e43f00dcd163d8e315307f945294fad8262c04f",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 50,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 150000,
+      "description": "Sparse matrix-vector multiply in CSR format (64 rows, 384 non-zeros), 50 iterations with feedback; irregular indirect memory access pattern."
+    },
+    "rsort": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": false,
+      "source": "src/cbench/rsort.c",
+      "variants": {
+        "qemu": {
+          "binary": "rsort.qemu.riscv",
+          "sha256": "6f42822ec18688eba5d4f9efb1450a549d11cc83795d0d8bc61ac270b434e31e",
+          "sentinel_addr": "0x800001d0"
+        },
+        "se": {
+          "binary": "rsort.se.riscv",
+          "sha256": "aa8b891b113c00e9e04f601a009646717f0cacf5c7dfece2e9b47be3efd7ee6e",
+          "sentinel_addr": "0x000101c0"
+        },
+        "xs": {
+          "binary": "rsort.xs.bin",
+          "sha256": "7dbfffc5a16a0315cbb1eac5ac54fdffa0ed041577d1cb5a3fbc89e6400e1b98",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 10,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 400000,
+      "description": "LSD radix sort (base-256) of 512 xorshift-generated 32-bit integers, 10 passes; streaming memory with minimal branches."
+    },
+    "towers": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar"
+      ],
+      "frontend_sensitive": true,
+      "reset_pc": "0x80000000",
+      "gated": false,
+      "source": "src/cbench/towers.c",
+      "variants": {
+        "qemu": {
+          "binary": "towers.qemu.riscv",
+          "sha256": "d2995981c65ca6ade102e1bf5956d3d5e2c4ed9bebf1e37a60af5c654d8289c6",
+          "sentinel_addr": "0x80000120"
+        },
+        "se": {
+          "binary": "towers.se.riscv",
+          "sha256": "aa80b9098f440ae51bdc0f06199c99b6dc6b6a04bda7675c25bf47ded737fae3",
+          "sentinel_addr": "0x00010120"
+        },
+        "xs": {
+          "binary": "towers.xs.bin",
+          "sha256": "7d730c653c6b7d4e58dfa150bb2d7be4ee85db5eac9a56eb662fb05e93437f48",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 5,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 1600000,
+      "description": "Tower of Hanoi with 15 discs, 5 passes; recursive call-intensive, exercises the return address stack (RAS)."
+    },
+    "stream_triad": {
+      "tier": 1,
+      "isa_subset": "rv64gc",
+      "uses": [
+        "scalar",
+        "fp"
+      ],
+      "frontend_sensitive": false,
+      "reset_pc": "0x80000000",
+      "gated": false,
+      "source": "src/cbench/stream_triad.c",
+      "variants": {
+        "qemu": {
+          "binary": "stream_triad.qemu.riscv",
+          "sha256": "5fcaa7c41867762fd591d3b6c9d5a82b1de2b50ab23ce7506582d78375759229",
+          "sentinel_addr": "0x80000110"
+        },
+        "se": {
+          "binary": "stream_triad.se.riscv",
+          "sha256": "e00385ebd8ac88410e8d19bcec22150142207f3a0a9894d47e2651402cd57ae1",
+          "sentinel_addr": "0x00010110"
+        },
+        "xs": {
+          "binary": "stream_triad.xs.bin",
+          "sha256": "baa9b29fbcbbd5fc5f04a0e0ea96b0a2604c4443360dd35c7a23b5690c2ddba0",
+          "derived_from": "qemu"
+        }
+      },
+      "argv": [],
+      "iteration_count": 100,
+      "measurement_window": {
+        "kind": "ebreak_sentinel"
+      },
+      "num_threads": 1,
+      "expected_insns_approx": 550000,
+      "description": "STREAM Triad (a[i]=b[i]+s*c[i]) over 1024-element double arrays, 100 iterations; 3-way streaming bandwidth with FP multiply-add."
     }
   }
 }
